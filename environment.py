@@ -4,6 +4,7 @@ import numpy as np
 
 from ase import Atoms
 from ase.calculators.emt import EMT
+from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
@@ -20,6 +21,7 @@ class AtomicEnv():
         self.atom_object = atom_object
         self.agent_number = agent_number
         calc = EMT()
+        #calc = LennardJones()
         self.atom_object.set_calculator(calc)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
@@ -44,9 +46,14 @@ class AtomicEnv():
             mic=False
         )
 
+        # Calculate vector from neighbors to agent atom in start state
+        start_pos_agent = atom_object.get_positions()[agent_number]
+        start_pos_neighbors = atom_object.get_positions()[hollow_neighbors]
+        self.agent_neigh_disp_start = start_pos_agent - start_pos_neighbors
+
         # Calculate vector from neighbors to agent atom in goal state
         goal_pos_agent = goal_state.get_positions()[agent_number]
-        goal_pos_neighbors =goal_state.get_positions()[hollow_neighbors]
+        goal_pos_neighbors = goal_state.get_positions()[hollow_neighbors]
         self.agent_neigh_disp_goal = goal_pos_agent - goal_pos_neighbors
 
         self.iter = 0
@@ -74,9 +81,9 @@ class AtomicEnv():
         all_dists = self.atom_object.get_distances(self.agent_number, indices=list(range(self.num_atoms)))
         mask = all_dists > self.active_dist
 
-        if self.iter/self.max_iter > 0.7:
+        if self.iter/self.max_iter > 0.5:
             self.active_dist += 0.1
-            self.max_force *= 0.9
+            #self.max_force *= 0.99
 
         mask[self.agent_number] = True
         constraint = FixAtoms(mask=mask)
@@ -173,3 +180,14 @@ class AtomicEnv():
         goal_prediction = np.mean(hnp + self.agent_neigh_disp_goal, axis=0)
 
         return goal_prediction
+
+
+    def predict_start_location(self):
+        """
+            Calculates the location of the start state
+        """
+        # Hollow neighbor positions
+        hnp = self.atom_object.get_positions()[self.hollow_neighbors]
+        start_prediction = np.mean(hnp + self.agent_neigh_disp_start, axis=0)
+
+        return start_prediction
