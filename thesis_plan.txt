@@ -36,6 +36,7 @@ November 30th:
 December 1st to January 31st:
 - Start writing the thesis.
 - Train agent to find non-intuitive pathways inaccessible the NEB method.
+- If successful, implement our "RL pathway finder" in ASE.
 - Demolish obstacles.
 
 
@@ -43,4 +44,6 @@ From February 1st, all time is devoted to thesis writing.
 
 
 
-Plan B ...
+Plan B:
+- Instead of a growing method from A to B, enhance the NEB method to use explorative initial paths and perform NEB optimization with Gaussian Process (GP) regression as Jónsson et al.
+- Can GP regression be used to model the transition dynamics following the action movement of the agent atom?
