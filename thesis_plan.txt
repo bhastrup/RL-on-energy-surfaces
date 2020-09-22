@@ -1,1 +1,46 @@
 
+Project time line:
+
+
+September 15th:
+- Learn about state of the art methods for finding transition pathways in small chemical systems, focus particularly on the Nudged Elastic Band (NEB) method.
+- Find and study scientific papers on reinforcement learning (RL) for molecular structure generation, see fx. the ASLA method (Hammer's group) and the MolGym method.
+- Build a reinforcement learning environment on-top of the Atomic Simulation Environment (ASE) library in python.
+
+
+September 22nd:
+- Build a unintelligent/untrained agent the explores a bit of configuration space before being dragged towards the goal state. This is done in order to gather relevant trajectory data from which an intelligent agent can later be trained. 
+
+
+September 30th:
+- Build an initial "dummy" neural network (to be replaced with physics inspired neural network) to solve the hollow-to-hollow (fcc) jumping of a Cu adsorbate on a Cu surface (fcc111). 
+
+
+October 15th:
+- Implement and compare both a policy based RL agent such as policy gradient/A3C, and a pure value based Deep-Q agent to see which one should be used throughout the project.
+- Implement a physics inpspired neural network architecture for state representation of the local chemical surroundings such as the Cormorant architecture.
+
+
+October 31st:
+- Implement alternative deep neural networks (such as 3d-convolutional NNs) against which the physics inspired network (Cormorant fx) can be benchmarked in order to assess the utility of using rotationally invariant networks. 
+
+
+November 20th:
+- Solve a range of engineering challenges related to yet unknown obstacles that inevitably will appear and hinder the smooth realization of aforementioned goals.
+
+
+November 30th:
+- Devise a strategy to train the agent on increasingly more difficult chemical systems.
+
+
+December 1st to January 31st:
+- Start writing the thesis.
+- Train agent to find non-intuitive pathways inaccessible the NEB method.
+- Demolish obstacles.
+
+
+From February 1st, all time is devoted to thesis writing.
+
+
+
+Plan B ...
