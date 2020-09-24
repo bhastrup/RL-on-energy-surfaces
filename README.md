@@ -4,3 +4,7 @@ Reinforcement Learning (RL) approach to learn how to navigate high dimensional e
 
 # Thesis plan is now available!
 Initial draft of a thesis plan can be found above. Feel free to add points.
+
+
+# Random agent
+![](random_agent.gif)
