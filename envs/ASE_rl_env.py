@@ -72,9 +72,18 @@ class ASE_RL_Env():
 
         self.iter = 0
 
+        self.script_dir = os.path.dirname(__file__)
+
         # Plotting
         if self.view:
             self.initialize_viewer()
+
+        
+
+        # Create directory to save trajectory files for hessian?? noope
+        #self.results_dir = os.path.join(self.script_dir, 'plots/')
+        #if not os.path.isdir(self.results_dir):
+        #    os.makedirs(self.results_dir)
 
 
     def initialize_viewer(self):
@@ -105,8 +114,7 @@ class ASE_RL_Env():
         self.ax.set_title('Iteration ' + str(self.iter), fontsize=20)
         plt.show(block=False)
 
-        
-        self.script_dir = os.path.dirname(__file__)
+        # Specify where to save the plots
         self.results_dir = os.path.join(self.script_dir, 'plots/')
         if not os.path.isdir(self.results_dir):
             os.makedirs(self.results_dir)
@@ -155,11 +163,6 @@ class ASE_RL_Env():
             Updates the positions of the agent atom
             according to the chosen action
         """
-        # Allow agent atom to be moved
-        if self.iter > 1:
-            self.mask = np.repeat(False, self.num_atoms)
-            constraint = FixAtoms(mask=self.mask)
-            self.atom_object.set_constraint(constraint)
 
         # Increment position by agent action
         self.pos = self.atom_object.get_positions()
@@ -190,8 +193,13 @@ class ASE_RL_Env():
         self.relaxer = BFGS(self.atom_object)
         #self.relaxer = GPMin(self.atom_object)
         self.relaxer.run(fmax=self.max_force)
-        # print(self.relaxer.)
         self.pos = self.atom_object.get_positions()
+
+        # Finally, remove the constraint from all atoms
+        # (necessary for .get_forces())
+        self.mask = np.repeat(False, self.num_atoms)
+        constraint = FixAtoms(mask=self.mask)
+        self.atom_object.set_constraint(constraint)
 
         return self.pos
 
@@ -250,7 +258,8 @@ class ASE_RL_Env():
             done = True
             info = "Wall"
 
-        # c) Has max iterations been reached? .. to be removed
+        # c) Has max iterations been reached? 
+        # .. to be removed (happens in main script)
         if self.iter >= self.max_iter:
             done = True
             info = "Max_iter"
@@ -269,11 +278,17 @@ class ASE_RL_Env():
             self.ax.clear()
 
             if self.view_force:
+                # Should forces be shown after action instead of relaxation?
                 forces = self.atom_object.get_forces()
+                forces_magnitude = np.linalg.norm(forces, axis=1)
                 for i in range(self.num_atoms):
+                    #print('force ' + str(i) + ' = ' + str(forces_magnitude[i]))
+                    alpha = (1/self.max_force)*forces_magnitude[i]
+                    alpha = min(1, max(alpha, 0))
                     self.ax.scatter(
                         pos[i, 0], pos[i,1], pos[i, 2],
-                        zdir='z', s=8000, c=forces,
+                        zdir='z', s=8000, c=self.atom_colors[i],
+                        alpha=alpha,
                         depthshade=False, edgecolors='black'
                     )
             else:
