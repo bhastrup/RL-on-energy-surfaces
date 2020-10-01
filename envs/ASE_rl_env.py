@@ -17,19 +17,17 @@ import os
 
 class ASE_RL_Env():
 
-    def __init__(self, initial_state: Atoms, action_space: np.ndarray, 
+    def __init__(self, initial_state: Atoms,
             goal_state: np.ndarray, hollow_neighbors: List,
             goal_dists: np.ndarray, goal_dists_periodic: np.ndarray,
-            agent_number: int,
-            goal_th: float=0.02, max_force: float=0.05,
-            max_barrier: float=1.5, step_size: float=0.1,
-            max_iter: int=50, active_dist: float=4.0,
-            view: bool=False, view_force: bool=False):
+            agent_number: int, view: bool=False, view_force: bool=False):
 
-        self.goal_th = goal_th
-        self.max_iter = max_iter
-        self.max_force = max_force
-        self.max_barrier = max_barrier
+        self.goal_th = 0.02
+        self.max_iter = 50
+        self.max_force = 0.05
+        self.max_barrier = 1.5
+        self.step_size = 0.1
+        self.active_dist = 4.0
         self.view = view
         self.view_force = view_force
 
@@ -44,15 +42,13 @@ class ASE_RL_Env():
         self.min_energy = self.energy
         self.relaxer = BFGS(self.atom_object)
 
-        self.step_size = step_size
-        self.action_space = action_space
+        self.action_space = self.get_action_space()
 
         self.hollow_neighbors = hollow_neighbors
         self.goal_dists = goal_dists
         self.goal_dists_periodic=goal_dists_periodic
 
         self.num_atoms = len(self.initial_state)
-        self.active_dist = active_dist
 
         self.initial_dists = self.atom_object.get_distances(
             a=agent_number,
@@ -85,6 +81,27 @@ class ASE_RL_Env():
         #if not os.path.isdir(self.results_dir):
         #    os.makedirs(self.results_dir)
 
+
+    def get_action_space(self):
+        """
+            Creates flattened array of action displacement vectors in 3d
+            Should probably be a list instead
+        """
+        action_space = np.zeros((3,3,3), object)
+        for i in range(0, 3):
+            for j in range(0, 3):
+                for k in range(0, 3):
+                    action_space[i,j,k] = np.array([i-1,j-1,k-1])
+
+        action_space = action_space.flatten()
+        if max(action_space[13]) == 0:
+            action_space = np.delete(action_space, 13)
+
+        for i in range(len(action_space)):
+            action_space[i] = np.divide(action_space[i], np.linalg.norm(action_space[i])) * self.step_size
+
+        # np.stack(action_space)
+        return action_space
 
     def initialize_viewer(self):
         self.fig = plt.figure(figsize=(10,10))
@@ -270,6 +287,7 @@ class ASE_RL_Env():
     def render(self):
         """
             Updates the plot with the new atomic coordinates
+            WARNING: Very slow. Do not use for actual data collection/training)
         """
         if self.view:
 

@@ -80,18 +80,11 @@ for i in range(num_episodes):
     # Initialize/reset reinforcement learning environment
     env = ASE_RL_Env(
         initial_state=slab.copy(),
-        action_space=action_space,
         goal_state=slab_b.copy(),
         hollow_neighbors=hollow_neighbors,
         goal_dists=dist_B,
         goal_dists_periodic=dist_B_periodic,
         agent_number=agent_atom,
-        goal_th=0.1,
-        max_force=0.1,
-        max_barrier=1.5,
-        step_size=1,
-        max_iter = 50,
-        active_dist=7,
         view=True,
         view_force=False
     )
@@ -106,8 +99,8 @@ for i in range(num_episodes):
         agent_to_start = env.predict_start_location() - agent_pos
         agent_to_goal = env.predict_goal_location() - agent_pos
 
-        start_proj = drift_projection(action_space, agent_to_start)
-        goal_proj = drift_projection(action_space, agent_to_goal)
+        start_proj = drift_projection(env.action_space, agent_to_start)
+        goal_proj = drift_projection(env.action_space, agent_to_goal)
 
         lambda_sm = (env.max_iter-t)/env.max_iter # lambda softmax
         if t>0:
@@ -117,7 +110,7 @@ for i in range(num_episodes):
             p_action = None
 
         action = env.action_space[np.random.choice(
-            len(action_space),
+            len(env.action_space),
             size=1,
             p=p_action
         )][0]
