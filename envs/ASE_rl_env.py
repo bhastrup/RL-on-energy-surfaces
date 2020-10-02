@@ -23,24 +23,25 @@ class ASE_RL_Env():
             agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.02
-        self.max_iter = 50
+        self.max_iter = 10
         self.max_force = 0.05
         self.max_barrier = 1.5
         self.step_size = 0.1
         self.active_dist = 4.0
         self.view = view
         self.view_force = view_force
-
-        self.atom_object = initial_state.copy()
+        
         self.initial_state = initial_state
         self.goal_state = goal_state
         self.agent_number = agent_number
 
+        self.atom_object = initial_state.copy()
         calc = EMT() #calc = LennardJones()
         self.atom_object.set_calculator(calc)
+        self.relaxer = BFGS(self.atom_object)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
-        self.relaxer = BFGS(self.atom_object)
+
 
         self.action_space = self.get_action_space()
 
@@ -71,8 +72,8 @@ class ASE_RL_Env():
         self.script_dir = os.path.dirname(__file__)
 
         # Plotting
-        if self.view:
-            self.initialize_viewer()
+        # if self.view:
+        #    self.initialize_viewer()
 
         
 
@@ -141,7 +142,10 @@ class ASE_RL_Env():
         """
             Resets the environment (back to initial state)
         """
+        self.iter = 0
         self.atom_object = self.initial_state.copy()
+        calc = EMT()
+        self.atom_object.set_calculator(calc)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
     
@@ -183,7 +187,7 @@ class ASE_RL_Env():
 
         # Increment position by agent action
         self.pos = self.atom_object.get_positions()
-        self.pos[self.agent_number, :] += action
+        self.pos[self.agent_number, :] += self.action_space[action][0]
         self.atom_object.set_positions(self.pos)
 
         return None
@@ -233,13 +237,6 @@ class ASE_RL_Env():
         self.min_energy = min(self.min_energy, self.energy)
 
         return reward
-
-
-    def _step_vector(self, action):
-        a = action
-        dx = self.step_size
-
-        return None
 
 
     def _episode_terminated(self):

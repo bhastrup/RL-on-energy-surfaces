@@ -2,7 +2,6 @@
 from typing import List
 
 import numpy as np
-from sklearn.utils.extmath import softmax
 import torch
 # import argparse
 
@@ -27,10 +26,8 @@ from ase.optimize import BFGS
 from ase.constraints import FixAtoms
 
 from envs.ASE_rl_env import ASE_RL_Env
-from misc import create_action_space, drift_projection
-
-# Specify action space
-action_space = create_action_space(step_size=0.1)
+# from misc import drift_projection
+from models.random_agent import RandomAgent
 
 # Build ASE slab
 slab = fcc111('Cu', size=(2,3,4), vacuum=10.0)
@@ -63,12 +60,28 @@ dist_B= slab_b.get_distances(agent_atom, hollow_neighbors, mic=False)
 dist_B_periodic = slab_b.get_distances(agent_atom, hollow_neighbors, mic=True)
 
 
-num_episodes = 1
+# Initialize reinforcement learning environment
+env = ASE_RL_Env(
+    initial_state=slab.copy(),
+    goal_state=slab_b.copy(),
+    hollow_neighbors=hollow_neighbors,
+    goal_dists=dist_B,
+    goal_dists_periodic=dist_B_periodic,
+    agent_number=agent_atom,
+    view=True,
+    view_force=False
+)
+
+# Define agent
+k = 100 # softmax coefficient
+sigma = 3 # exploration factor
+agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
+
+num_episodes = 2
 rewards_list = []
 steps_count = []
 break_info = []
-k = 100 # softmax coefficient
-sigma = 3 # exploration factor
+
 
 for i in range(num_episodes):
 
@@ -77,43 +90,20 @@ for i in range(num_episodes):
     total_reward = 0
     t = 0
  
-    # Initialize/reset reinforcement learning environment
-    env = ASE_RL_Env(
-        initial_state=slab.copy(),
-        goal_state=slab_b.copy(),
-        hollow_neighbors=hollow_neighbors,
-        goal_dists=dist_B,
-        goal_dists_periodic=dist_B_periodic,
-        agent_number=agent_atom,
-        view=True,
-        view_force=False
-    )
+    env.reset()
     
     traj = Trajectory("epi_" + str(i) + ".traj", 'w')
     while t < (env.max_iter + 1):
         
         print("t = " + str(t))
 
-        # Choose action
+        # Acquire transition progression data
         agent_pos = env.atom_object.get_positions()[env.agent_number]
         agent_to_start = env.predict_start_location() - agent_pos
         agent_to_goal = env.predict_goal_location() - agent_pos
 
-        start_proj = drift_projection(env.action_space, agent_to_start)
-        goal_proj = drift_projection(env.action_space, agent_to_goal)
-
-        lambda_sm = (env.max_iter-t)/env.max_iter # lambda softmax
-        if t>0:
-            p_action = softmax([((-lambda_sm)*start_proj/np.linalg.norm(agent_to_start)*sigma
-                                + (1-lambda_sm)*goal_proj)*k])[0]
-        else:
-            p_action = None
-
-        action = env.action_space[np.random.choice(
-            len(env.action_space),
-            size=1,
-            p=p_action
-        )][0]
+        # Choose action
+        action = agent.select_action(agent_to_start, agent_to_goal, t, env.max_iter)
 
         # Implement action on environment
         new_state, reward, done, info  = env.step(action)
