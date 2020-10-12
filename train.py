@@ -13,10 +13,10 @@ import sys
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-from slab_params import *
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
 from utils.memory import ReplayMemory
+from utils.slab_params import *
 
 # Initialize reinforcement learning environment
 env = ASE_RL_Env(
