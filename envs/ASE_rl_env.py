@@ -4,6 +4,7 @@ import numpy as np
 
 from ase import Atoms
 from ase.calculators.emt import EMT
+# from asap3 import EMT
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from ase.optimize import GPMin
@@ -23,10 +24,10 @@ class ASE_RL_Env():
             agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.02
-        self.max_iter = 10
+        self.max_iter = 30
         self.max_force = 0.05
         self.max_barrier = 1.5
-        self.step_size = 0.1
+        self.step_size = 0.15
         self.active_dist = 4.0
         self.view = view
         self.view_force = view_force
@@ -41,9 +42,10 @@ class ASE_RL_Env():
         self.relaxer = BFGS(self.atom_object)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
-
+        self.pos = self.atom_object.get_positions()
 
         self.action_space = self.get_action_space()
+        self.n_actions = len(self.action_space)
 
         self.hollow_neighbors = hollow_neighbors
         self.goal_dists = goal_dists
@@ -170,6 +172,8 @@ class ASE_RL_Env():
 
         # Has episode terminated?
         done, done_info = self._episode_terminated()
+        if done:
+            reward += 5
 
         # Future versions will probably contain much
         # more information than just termination info
