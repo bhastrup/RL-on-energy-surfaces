@@ -1,4 +1,8 @@
 
+import sys, os
+file_dir = os.path.dirname(__file__)
+sys.path.append(file_dir)
+
 from typing import List
 import numpy as np
 
@@ -7,6 +11,7 @@ from ase.calculators.emt import EMT
 # from asap3 import EMT
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
+from .bfgs_max import BFGS as BFGS_MAX
 from ase.optimize import GPMin
 from ase.constraints import FixAtoms
 
@@ -14,21 +19,22 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import animation
 
-import os
+
 
 class ASE_RL_Env():
 
-    def __init__(self, initial_state: Atoms,
-            goal_state: np.ndarray, hollow_neighbors: List,
-            goal_dists: np.ndarray, goal_dists_periodic: np.ndarray,
-            agent_number: int, view: bool=False, view_force: bool=False):
+    def __init__(self, initial_state: Atoms, goal_state: Atoms,
+            hollow_neighbors: List, goal_dists: np.ndarray, 
+            goal_dists_periodic: np.ndarray, agent_number: int,
+            view: bool=False, view_force: bool=False):
 
-        self.goal_th = 0.02
-        self.max_iter = 30
+        self.goal_th = 0.25
+        self.max_iter = 60
         self.max_force = 0.05
-        self.max_barrier = 1.5
-        self.step_size = 0.15
+        self.max_barrier = 2.5
+        self.step_size = 0.1
         self.active_dist = 4.0
+        self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
         self.view = view
         self.view_force = view_force
         
@@ -191,6 +197,7 @@ class ASE_RL_Env():
 
         # Increment position by agent action
         self.pos = self.atom_object.get_positions()
+        print(self.action_space[action][0])
         self.pos[self.agent_number, :] += self.action_space[action][0]
         self.atom_object.set_positions(self.pos)
 
@@ -208,16 +215,17 @@ class ASE_RL_Env():
         )
         self.mask = all_dists > self.active_dist
 
-        if self.iter/self.max_iter > 0.5:
-            self.active_dist += 0.1
+        #if self.iter/self.max_iter > 0.5:
+            # self.active_dist += 0.05
             #self.max_force *= 0.99
 
         self.mask[self.agent_number] = True
         constraint = FixAtoms(mask=self.mask)
         self.atom_object.set_constraint(constraint)
-        self.relaxer = BFGS(self.atom_object)
+        self.relaxer = BFGS_MAX(self.atom_object)
+        #self.relaxer = BFGS(self.atom_object)
         #self.relaxer = GPMin(self.atom_object)
-        self.relaxer.run(fmax=self.max_force)
+        self.relaxer.run(fmax=self.max_force, steps=4*self.max_optim_steps)
         self.pos = self.atom_object.get_positions()
 
         # Finally, remove the constraint from all atoms
@@ -341,8 +349,12 @@ class ASE_RL_Env():
             wnadering through the unit cell anyway)
         """
         # Hollow neighbor positions
-        hnp = self.atom_object.get_positions()[self.hollow_neighbors]
-        goal_prediction = np.mean(hnp + self.agent_neigh_disp_goal, axis=0)
+        # hnp = self.atom_object.get_positions()[self.hollow_neighbors]
+        # goal_prediction = np.mean(hnp + self.agent_neigh_disp_goal, axis=0)
+
+        # Function has been changed since we can ignore the risk of pushing the slab
+        # around in the unit cell when bottom layers are fixed anyways
+        goal_prediction = self.goal_state.get_positions()[self.agent_number]
 
         return goal_prediction
 
