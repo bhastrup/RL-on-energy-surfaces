@@ -9,6 +9,7 @@ import torchvision.transforms as T
 import math
 import random
 from itertools import count
+import pickle
 
 # Import surf-rider functionality
 from envs.ASE_rl_env import ASE_RL_Env
@@ -40,7 +41,7 @@ env = ASE_RL_Env(
     goal_dists=dist_B,
     goal_dists_periodic=dist_B_periodic,
     agent_number=agent_atom,
-    view=True,
+    view=False,
     view_force=False
 )
 
@@ -130,6 +131,18 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
+
+def save_memory_to_pickle(data, pickle_file="memory.p"):
+    # Save transitions into a pickle file.
+    pickle.dump(data, open( pickle_file, "wb" ) )
+    return None
+
+
+def load_memory_from_pickle(pickle_file="memory.p"):
+    # # Load the transitions back from the pickle file.
+    memory = pickle.load( open( pickle_file, "rb" ) )
+    return memory
+
 #####################################################
 ##################  Training  #######################
 #####################################################
@@ -163,8 +176,8 @@ target_net.eval()
 optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(500)
 
-
-num_episodes = 1
+traj_dict = {}
+num_episodes = 3
 episode_reward = []
 steps_done = 0
 # plt.ion()
@@ -213,7 +226,7 @@ for i_episode in range(num_episodes):
 
         env.render()
         # Perform one step of the optimization (on the target network)
-        optimize_model()
+        # optimize_model()
         if done:
             print(done_info)
             episode_reward.append(reward_total)
@@ -223,6 +236,9 @@ for i_episode in range(num_episodes):
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
+
 print('Complete')
 plt.ioff()
-plt.show()
+plt.show(block=False)
+
+save_memory_to_pickle(data=memory.memory, pickle_file="memory.p")
