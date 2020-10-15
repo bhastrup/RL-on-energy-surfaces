@@ -43,8 +43,10 @@ sigma = 1.2 # exploration factor
 agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 traj_dict = {}
-num_episodes = 4
+num_episodes = 5000
 episode_reward = []
+
+n_episode_save = 100
 
 for i_episode in range(num_episodes):
 
@@ -84,15 +86,20 @@ for i_episode in range(num_episodes):
             one_episode_dict['done_info'] = done_info
             traj_dict[str(i_episode)] = one_episode_dict
 
+            # Every now and then
+            if i_episode % n_episode_save == 0:
+                save_memory_to_pickle(traj_dict, pickle_file="memory.p")
+
             break
 
-save_memory_to_pickle(traj_dict, pickle_file="memory.p")
 
-mem = load_memory_from_pickle(pickle_file="memory.p")
 
-for ep_id, ep_dict in mem.items():
-    print("\nEpisode ID:", ep_id)
-    for trans_id, trans_dict in islice(ep_dict.items(), 0, len(ep_dict)-1):
-        print("\nTransition ID:", trans_id)
-        print("\nPotential Energy Diff:", trans_dict['energy_after'] - trans_dict['energy_before'])
+#save_memory_to_pickle(traj_dict, pickle_file="memory.p")
+#mem = load_memory_from_pickle(pickle_file="memory.p")
+
+#for ep_id, ep_dict in mem.items():
+#    print("\nEpisode ID:", ep_id)
+#    for trans_id, trans_dict in islice(ep_dict.items(), 0, len(ep_dict)-1):
+#        print("\nTransition ID:", trans_id)
+#        print("\nPotential Energy Diff:", trans_dict['energy_after'] - trans_dict['energy_before'])
 

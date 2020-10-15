@@ -7,8 +7,8 @@ from typing import List
 import numpy as np
 
 from ase import Atoms
-from ase.calculators.emt import EMT
-# from asap3 import EMT
+# from ase.calculators.emt import EMT
+from asap3 import EMT
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from .bfgs_max import BFGS as BFGS_MAX
@@ -29,7 +29,7 @@ class ASE_RL_Env():
             view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.25
-        self.max_iter = 60
+        self.max_iter = 125
         self.max_force = 0.05
         self.max_barrier = 2.5
         self.step_size = 0.1
