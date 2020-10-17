@@ -3,12 +3,12 @@ import sys, os
 file_dir = os.path.dirname(__file__)
 sys.path.append(file_dir)
 
-from typing import List
+from typing import List, Tuple, Dict
 import numpy as np
 
 from ase import Atoms
-# from ase.calculators.emt import EMT
-from asap3 import EMT
+from ase.calculators.emt import EMT
+# from asap3 import EMT
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from .bfgs_max import BFGS as BFGS_MAX
@@ -91,7 +91,7 @@ class ASE_RL_Env():
         #    os.makedirs(self.results_dir)
 
 
-    def get_action_space(self):
+    def get_action_space(self) -> np.ndarray:
         """
             Creates flattened array of action displacement vectors in 3d
             Should probably be a list instead
@@ -112,7 +112,7 @@ class ASE_RL_Env():
         # np.stack(action_space)
         return action_space
 
-    def initialize_viewer(self):
+    def initialize_viewer(self) -> None:
         self.fig = plt.figure(figsize=(10,10))
         self.ax = self.fig.add_subplot(111, projection='3d')
         self.ax.view_init(20, -100)
@@ -161,7 +161,7 @@ class ASE_RL_Env():
             self.initialize_viewer()
 
 
-    def step(self, action: np.ndarray):
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
         """
             Agent takes action and all other atoms are relaxed
         """
@@ -189,7 +189,7 @@ class ASE_RL_Env():
         return new_state, reward, done, info
 
 
-    def _take_action(self, action):
+    def _take_action(self, action) -> None:
         """
             Updates the positions of the agent atom
             according to the chosen action
@@ -204,7 +204,7 @@ class ASE_RL_Env():
         return None
 
 
-    def _transition(self):
+    def _transition(self) -> np.ndarray:
         """
             Relaxes neighboring atoms in response to the recent action
         """
@@ -237,7 +237,7 @@ class ASE_RL_Env():
         return self.pos
 
 
-    def _get_reward(self):
+    def _get_reward(self) -> float:
         """
             Outputs reward of transition
         """
@@ -293,7 +293,7 @@ class ASE_RL_Env():
         return done, info
 
 
-    def render(self):
+    def render(self) -> None:
         """
             Updates the plot with the new atomic coordinates
             WARNING: Very slow. Do not use for actual data collection/training)
@@ -340,7 +340,7 @@ class ASE_RL_Env():
         return None
 
 
-    def predict_goal_location(self):
+    def predict_goal_location(self) -> np.ndarray:
         """
             Calculates the location of the goal state
             (this method could be made simpler by simply 
@@ -359,7 +359,7 @@ class ASE_RL_Env():
         return goal_prediction
 
 
-    def predict_start_location(self):
+    def predict_start_location(self) -> np.ndarray:
         """
             Calculates the location of the start state
         """
