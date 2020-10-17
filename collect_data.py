@@ -54,14 +54,11 @@ for i_episode in range(num_episodes):
     env.reset()
     reward_total = 0
     one_episode_dict = {}
-
     for t in count():
 
         one_trans_dict = {}
-        one_trans_dict['state'] = env.atom_object.get_positions()
-        one_trans_dict['energy_before'] = env.atom_object.get_potential_energy()
+        one_trans_dict['state'] = env.atom_object
         
-
         # Select and perform an action using RandomAgent   
         agent_pos = env.atom_object.get_positions()[env.agent_number]
         agent_to_start = env.predict_start_location() - agent_pos
@@ -69,11 +66,17 @@ for i_episode in range(num_episodes):
         # Choose action
         action = agent.select_action(agent_to_start, agent_to_goal, t, env.max_iter)
         _, reward, done, done_info = env.step(action)
-        
+
+
+        # Observe new state
+        if not done:
+            next_state = env.atom_object
+        else:
+            next_state = None
+
         one_trans_dict['action'] = action
-        one_trans_dict['state_after'] = env.atom_object.get_positions()
-        one_trans_dict['energy_after'] = env.atom_object.get_potential_energy()
-        
+        one_trans_dict['next_state'] = next_state
+        one_trans_dict['reward'] = reward
         
         # Update accumulated reward for current episode
         reward_total += reward
