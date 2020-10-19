@@ -33,9 +33,10 @@ class RandomAgent():
 
         lambda_sm = (t_max-t)/t_max # lambda softmax
 
-        if t>0:
+        start_dist = np.linalg.norm(agent_to_start)
+        if t>0 and start_dist>0.:
             p_action = softmax([(
-                (-lambda_sm)*start_proj/np.linalg.norm(agent_to_start) * self.sigma
+                (-lambda_sm)*start_proj/start_dist * self.sigma
                 + (1-lambda_sm)*goal_proj) * self.k])[0]
         else:
             p_action = None

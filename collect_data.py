@@ -43,10 +43,10 @@ sigma = 1.2 # exploration factor
 agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 traj_dict = {}
-num_episodes = 5000
+num_episodes = 100
 episode_reward = []
 
-n_episode_save = 100
+n_episode_save = 5
 
 for i_episode in range(num_episodes):
 
@@ -57,7 +57,7 @@ for i_episode in range(num_episodes):
     for t in count():
 
         one_trans_dict = {}
-        one_trans_dict['state'] = env.atom_object
+        one_trans_dict['state'] = env.atom_object.copy()
         
         # Select and perform an action using RandomAgent   
         agent_pos = env.atom_object.get_positions()[env.agent_number]
@@ -70,7 +70,7 @@ for i_episode in range(num_episodes):
 
         # Observe new state
         if not done:
-            next_state = env.atom_object
+            next_state = env.atom_object.copy()
         else:
             next_state = None
 
@@ -85,14 +85,12 @@ for i_episode in range(num_episodes):
 
         if done:
             episode_reward.append(reward_total)
-
             one_episode_dict['done_info'] = done_info
             traj_dict[str(i_episode)] = one_episode_dict
-
+ 
             # Every now and then
             if i_episode % n_episode_save == 0:
                 save_memory_to_pickle(traj_dict, pickle_file="memory.p")
-
             break
 
 
