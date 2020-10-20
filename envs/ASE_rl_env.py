@@ -48,6 +48,8 @@ class ASE_RL_Env():
         self.relaxer = BFGS(self.atom_object)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
+        self.energy_profile = [self.energy]
+        self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
 
         self.action_space = self.get_action_space()
@@ -245,8 +247,10 @@ class ASE_RL_Env():
         self.energy = self.atom_object.get_potential_energy()
         reward = self.energy - old_energy
 
-        # Update minimum energy along path
+        # Update energy profile, minimum energy and barrier along path
+        self.energy_profile.append(self.energy)
         self.min_energy = min(self.min_energy, self.energy)
+        self.energy_barrier = max(self.energy_barrier, self.energy-self.min_energy)
 
         return reward
 
