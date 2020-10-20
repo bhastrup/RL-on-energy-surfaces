@@ -39,14 +39,14 @@ env = ASE_RL_Env(
 
 # Define agent
 k = 20 # softmax coefficient
-sigma = 1.2 # exploration factor
+sigma = 1.4 # exploration factor
 agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 traj_dict = {}
-num_episodes = 100
+num_episodes = 10000
 episode_reward = []
 
-n_episode_save = 5
+n_episode_save = 50
 
 for i_episode in range(num_episodes):
 
@@ -89,8 +89,9 @@ for i_episode in range(num_episodes):
             traj_dict[str(i_episode)] = one_episode_dict
  
             # Every now and then
-            if i_episode % n_episode_save == 0:
+            if (i_episode + 1) % n_episode_save == 0:
                 save_memory_to_pickle(traj_dict, pickle_file="memory.p")
+            
             break
 
 
