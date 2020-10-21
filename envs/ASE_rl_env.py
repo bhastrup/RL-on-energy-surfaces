@@ -158,6 +158,8 @@ class ASE_RL_Env():
         self.atom_object.set_calculator(calc)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
+        self.energy_profile = [self.energy]
+        self.energy_barrier = 0
     
         if self.view:
             self.initialize_viewer()
