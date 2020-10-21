@@ -186,7 +186,7 @@ class ASE_RL_Env():
         # Future versions will probably contain much
         # more information than just termination info
         info = {}
-        info["termination"] = done_info 
+        info["termination"] = done_info
 
         return new_state, reward, done, info
 
@@ -255,7 +255,7 @@ class ASE_RL_Env():
         return reward
 
 
-    def _episode_terminated(self):
+    def _episode_terminated(self) -> Tuple[bool, str]:
         """
             Checks if either 
             a) new structure is equal to goal state, or
@@ -267,24 +267,12 @@ class ASE_RL_Env():
         info = "game on"
 
         # a) Has goal site been reached?
-        new_dists = self.atom_object.get_distances(
-            a=self.agent_number,
-            indices=self.hollow_neighbors,
-            mic=False
-        )
-
-        if np.linalg.norm(new_dists - self.goal_dists) < self.goal_th:
-            new_dists_periodic = self.atom_object.get_distances(
-                a=self.agent_number,
-                indices=self.hollow_neighbors,
-                mic=True
-            )
-            if np.linalg.norm(new_dists_periodic - self.goal_dists_periodic) < self.goal_th:
-                done = True
-                info = "Goal"
+        if self.test_goal(self.goal_th):
+            done = True
+            info = "Goal"
 
         # b) Has energy wall been struck?
-        if self.energy > (self.min_energy + self.max_barrier):
+        if self.energy_barrier > self.max_barrier:
             done = True
             info = "Wall"
 
@@ -296,6 +284,30 @@ class ASE_RL_Env():
     
         return done, info
 
+
+    def test_goal(self, goal_th: float) -> bool:
+        """
+            Tests if goal has been reached to precision goal_th
+        """
+
+        goal = False
+
+        new_dists = self.atom_object.get_distances(
+            a=self.agent_number,
+            indices=self.hollow_neighbors,
+            mic=False
+        )
+
+        if np.linalg.norm(new_dists - self.goal_dists) < goal_th:
+            new_dists_periodic = self.atom_object.get_distances(
+                a=self.agent_number,
+                indices=self.hollow_neighbors,
+                mic=True
+            )
+            if np.linalg.norm(new_dists_periodic - self.goal_dists_periodic) < goal_th:
+                goal = True
+        
+        return goal
 
     def render(self) -> None:
         """
