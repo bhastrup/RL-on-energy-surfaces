@@ -66,10 +66,11 @@ for i_episode in range(num_episodes):
         action = agent.select_action(agent_to_start, agent_to_goal, t, env.max_iter)
         _, reward, done, done_info = env.step(action)
 
+        done_info = done_info['Termination']
         # Observe new state
         if not done:
             next_state = env.atom_object.copy()
-            one_trans_dict['reward'] = 0
+            one_trans_dict['reward'] = 0.
         else:
             next_state = None
             # Specify rewards
@@ -81,7 +82,7 @@ for i_episode in range(num_episodes):
                 if env.test_goal(3*env.goal_th):
                     one_trans_dict['reward'] = env.energy_barrier
                 else:
-                    one_trans_dict['reward'] = -2*env.max_barrier
+                    one_trans_dict['reward'] = -2.0*env.max_barrier
 
         one_trans_dict['action'] = action
         one_trans_dict['next_state'] = next_state
