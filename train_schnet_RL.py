@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchvision.transforms as T
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.extmath import softmax
@@ -108,7 +107,7 @@ learning_rate = 0.0001
 
 class args_wrapper():
     def __init__(self, num_interactions: int, node_size: int, cutoff: float, update_edges: bool, atomwise_normalization: bool, 
-                 max_steps: int, device: torch.device, learning_rate: float, output_dir):
+                 max_steps: int, device: torch.device, learning_rate: float, output_dir: str):
         self.num_interactions = num_interactions
         self.node_size = node_size
         self.cutoff = cutoff
@@ -119,7 +118,7 @@ class args_wrapper():
         self.learning_rate = learning_rate
         self.output_dir = output_dir
 
-args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate)
+args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
 memory_mc = ReplayMemoryMonteCarlo(1000)
 transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 
@@ -175,7 +174,7 @@ def select_action(state):
         return random.randrange(n_actions)
 
 
-def optimize():
+def optimize_model():
     transitions = memory_mc.sample(BATCH_SIZE)
     batch = memory_mc.Transition(*zip(*transitions))
     graph_states = [transformer(sa) for sa in batch.state_action]
@@ -238,6 +237,7 @@ def plot_reward_and_energy_barrier():
     ]
 
     color_iter = iter(colors)
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_width, fig_height), constrained_layout=True)
 
     # Plot total rewards
     color = next(color_iter)
@@ -250,8 +250,8 @@ def plot_reward_and_energy_barrier():
     )
     ax.fill_between(
         x=np.arange(len(RL_total_rewards_avg)),
-        y1=RL_total_rewards_avg - RL_total_rewards_std,
-        y2=RL_total_rewards_avg + RL_total_rewards_std,
+        y1=np.array(RL_total_rewards_avg) - np.array(RL_total_rewards_std),
+        y2=np.array(RL_total_rewards_avg) + np.array(RL_total_rewards_std),
         alpha=0.5,
         zorder=1,
         color=color,
@@ -268,8 +268,8 @@ def plot_reward_and_energy_barrier():
     )
     ax.fill_between(
         x=np.arange(len(RL_energy_barriers_avg)),
-        y1=RL_energy_barriers_avg - RL_energy_barriers_std,
-        y2=RL_energy_barriers_avg + RL_energy_barriers_std,
+        y1=np.array(RL_energy_barriers_avg) - np.array(RL_energy_barriers_std),
+        y2=np.array(RL_energy_barriers_avg) + np.array(RL_energy_barriers_std),
         alpha=0.5,
         zorder=2,
         color=color,
@@ -361,6 +361,8 @@ RL_energy_barriers = []
 RL_energy_profiles = []
 RL_total_rewards_avg = []
 RL_energy_barriers_avg = []
+RL_total_rewards_std = []
+RL_energy_barriers_std = []
 
 best_barrier = np.inf
 best_profile = []
