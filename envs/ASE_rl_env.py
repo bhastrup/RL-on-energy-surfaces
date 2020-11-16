@@ -5,6 +5,7 @@ sys.path.append(file_dir)
 
 from typing import List, Tuple, Dict
 import numpy as np
+from sklearn.utils.extmath import softmax
 
 from ase import Atoms
 from ase.calculators.emt import EMT
@@ -52,7 +53,7 @@ class ASE_RL_Env():
         self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
 
-        self.action_space = self.get_action_space()
+        self.action_space = self.get_action_space_6()
         self.n_actions = len(self.action_space)
 
         self.hollow_neighbors = hollow_neighbors
@@ -114,6 +115,27 @@ class ASE_RL_Env():
         # np.stack(action_space)
         return action_space
 
+
+    def get_action_space_6(self) -> np.ndarray:
+        """
+            Creates flattened array of action displacement vectors in 3d
+            Should probably be a list instead
+        """
+        action_space = np.zeros(6, object)
+
+        action_space[0] = np.array([-1, 0, 0])
+        action_space[1] = np.array([1, 0, 0])
+        action_space[2] = np.array([0, -1, 0])
+        action_space[3] = np.array([0, 1, 0])
+        action_space[4] = np.array([0, 0, -1])
+        action_space[5] = np.array([0, 0, 1])
+
+        for i in range(len(action_space)):
+                action_space[i] = np.divide(action_space[i], np.linalg.norm(action_space[i])) * self.step_size
+        
+        return action_space
+
+
     def initialize_viewer(self) -> None:
         self.fig = plt.figure(figsize=(10,10))
         self.ax = self.fig.add_subplot(111, projection='3d')
@@ -160,19 +182,20 @@ class ASE_RL_Env():
         self.min_energy = self.energy
         self.energy_profile = [self.energy]
         self.energy_barrier = 0
-    
+        self.pos = self.atom_object.get_positions()
+
         if self.view:
             self.initialize_viewer()
 
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         """
             Agent takes action and all other atoms are relaxed
         """
         self.iter += 1
 
         # Action step
-        self._take_action(action)
+        state_action = self._take_action(action)
 
         # Update state
         new_state = self._transition()
@@ -181,19 +204,19 @@ class ASE_RL_Env():
         reward = self._get_reward()
 
         # Has episode terminated?
-        done, done_info = self._episode_terminated()
-        if done:
-            reward += 5
+        done, done_info, terminal_reward = self._episode_terminated()
+        
+        reward += terminal_reward
 
         # Future versions will probably contain much
         # more information than just termination info
         info = {}
         info["termination"] = done_info
 
-        return new_state, reward, done, info
+        return state_action, new_state, reward, done, info
 
 
-    def _take_action(self, action) -> None:
+    def _take_action(self, action: int) -> Atoms:
         """
             Updates the positions of the agent atom
             according to the chosen action
@@ -201,14 +224,14 @@ class ASE_RL_Env():
 
         # Increment position by agent action
         self.pos = self.atom_object.get_positions()
-        print(self.action_space[action][0])
-        self.pos[self.agent_number, :] += self.action_space[action][0]
+        # print(self.action_space[action])
+        self.pos[self.agent_number, :] += self.action_space[action]
         self.atom_object.set_positions(self.pos)
 
-        return None
+        return self.atom_object.copy()
 
 
-    def _transition(self) -> np.ndarray:
+    def _transition(self) -> Atoms:
         """
             Relaxes neighboring atoms in response to the recent action
         """
@@ -238,7 +261,7 @@ class ASE_RL_Env():
         constraint = FixAtoms(mask=self.mask)
         self.atom_object.set_constraint(constraint)
 
-        return self.pos
+        return self.atom_object.copy()
 
 
     def _get_reward(self) -> float:
@@ -247,7 +270,7 @@ class ASE_RL_Env():
         """
         old_energy = self.energy
         self.energy = self.atom_object.get_potential_energy()
-        reward = self.energy - old_energy
+        reward = -(self.energy - old_energy)
 
         # Update energy profile, minimum energy and barrier along path
         self.energy_profile.append(self.energy)
@@ -257,7 +280,7 @@ class ASE_RL_Env():
         return reward
 
 
-    def _episode_terminated(self) -> Tuple[bool, str]:
+    def _episode_terminated(self) -> Tuple[bool, str, float]:
         """
             Checks if either 
             a) new structure is equal to goal state, or
@@ -267,24 +290,29 @@ class ASE_RL_Env():
 
         done = False
         info = "game on"
+        terminal_reward = 0
 
-        # a) Has goal site been reached?
+        
         if self.test_goal(self.goal_th):
+            # a) Has goal site been reached?
             done = True
             info = "Goal"
-
-        # b) Has energy wall been struck?
-        if self.energy_barrier > self.max_barrier:
+            terminal_reward = -self.energy_barrier
+        elif self.energy_barrier > self.max_barrier:
+            # b) Has energy wall been struck?
             done = True
             info = "Wall"
-
-        # c) Has max iterations been reached? 
-        # .. to be removed (happens in main script)
-        if self.iter >= self.max_iter:
+            terminal_reward = -self.max_barrier
+        elif self.iter >= self.max_iter:
+            # c) Has max iterations been reached? 
             done = True
             info = "Max_iter"
-    
-        return done, info
+            if self.test_goal(3*self.goal_th):
+                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(3*self.goal_th)))
+            else:
+                terminal_reward = -2.0*self.max_barrier
+
+        return done, info, terminal_reward
 
 
     def test_goal(self, goal_th: float) -> bool:
@@ -293,7 +321,7 @@ class ASE_RL_Env():
         """
 
         goal = False
-
+        
         new_dists = self.atom_object.get_distances(
             a=self.agent_number,
             indices=self.hollow_neighbors,
@@ -310,6 +338,16 @@ class ASE_RL_Env():
                 goal = True
         
         return goal
+
+
+    def dist_to_goal(self) -> float:
+
+        absolute_goal_dist = np.linalg.norm(
+            self.pos[self.agent_number] - self.goal_state.get_positions()[self.agent_number]
+        )
+
+        return absolute_goal_dist
+
 
     def render(self) -> None:
         """
