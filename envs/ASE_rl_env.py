@@ -8,8 +8,8 @@ import numpy as np
 from sklearn.utils.extmath import softmax
 
 from ase import Atoms
-from ase.calculators.emt import EMT
-# from asap3 import EMT
+#from ase.calculators.emt import EMT
+from asap3 import EMT
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from .bfgs_max import BFGS as BFGS_MAX
