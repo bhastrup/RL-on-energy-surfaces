@@ -14,7 +14,11 @@ class RandomAgent():
                            on one or few actions
                 sigma: float - specifies the strength of the bias away
                                from A relative to the bias towards B
-
+            
+            NOTE:
+            Trajectory-Based Off-Policy Deep Reinforcement Learning - https://arxiv.org/pdf/1905.05710.pdf
+            "Instead of independent noise, temporally-correlated noise (Osband et al., 2016), or exploration 
+            directly in parameter space can lead to a larger variety of behaviours (Plappert et al., 2017)."
         """
 
         self.action_space = action_space
@@ -66,8 +70,13 @@ class RandomAgent():
             size=1,
             p=p_action
         )
+        
+        if p_action is not None:
+            action_prob = p_action[action]
+        else:
+            action_prob = 1./self.n_actions
 
-        return action
+        return action, action_prob
 
 
     def _action_projection(self, agent_to_goal: np.ndarray) -> np.ndarray:

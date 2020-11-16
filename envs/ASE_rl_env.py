@@ -53,7 +53,7 @@ class ASE_RL_Env():
         self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
 
-        self.action_space = self.get_action_space()
+        self.action_space = self.get_action_space_6()
         self.n_actions = len(self.action_space)
 
         self.hollow_neighbors = hollow_neighbors
@@ -188,7 +188,7 @@ class ASE_RL_Env():
             self.initialize_viewer()
 
 
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         """
             Agent takes action and all other atoms are relaxed
         """
@@ -216,7 +216,7 @@ class ASE_RL_Env():
         return state_action, new_state, reward, done, info
 
 
-    def _take_action(self, action) -> np.ndarray:
+    def _take_action(self, action: int) -> Atoms:
         """
             Updates the positions of the agent atom
             according to the chosen action
@@ -224,14 +224,14 @@ class ASE_RL_Env():
 
         # Increment position by agent action
         self.pos = self.atom_object.get_positions()
-        print(self.action_space[action][0])
-        self.pos[self.agent_number, :] += self.action_space[action][0]
+        # print(self.action_space[action])
+        self.pos[self.agent_number, :] += self.action_space[action]
         self.atom_object.set_positions(self.pos)
 
-        return self.pos
+        return self.atom_object.copy()
 
 
-    def _transition(self) -> np.ndarray:
+    def _transition(self) -> Atoms:
         """
             Relaxes neighboring atoms in response to the recent action
         """
@@ -261,7 +261,7 @@ class ASE_RL_Env():
         constraint = FixAtoms(mask=self.mask)
         self.atom_object.set_constraint(constraint)
 
-        return self.pos
+        return self.atom_object.copy()
 
 
     def _get_reward(self) -> float:
@@ -270,7 +270,7 @@ class ASE_RL_Env():
         """
         old_energy = self.energy
         self.energy = self.atom_object.get_potential_energy()
-        reward = self.energy - old_energy
+        reward = -(self.energy - old_energy)
 
         # Update energy profile, minimum energy and barrier along path
         self.energy_profile.append(self.energy)
@@ -308,7 +308,7 @@ class ASE_RL_Env():
             done = True
             info = "Max_iter"
             if self.test_goal(3*self.goal_th):
-                terminal_reward = -self.energy_barrier*(1+softmax(self.dist_to_goal()))
+                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(3*self.goal_th)))
             else:
                 terminal_reward = -2.0*self.max_barrier
 

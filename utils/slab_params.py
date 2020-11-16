@@ -41,4 +41,3 @@ hollow_neighbors = [12, 13, 14]
 dist_A = slab.get_distances(agent_atom, hollow_neighbors, mic=False)
 dist_B= slab_b.get_distances(agent_atom, hollow_neighbors, mic=False)
 dist_B_periodic = slab_b.get_distances(agent_atom, hollow_neighbors, mic=True)
-
