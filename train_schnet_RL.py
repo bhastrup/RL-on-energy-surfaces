@@ -87,15 +87,15 @@ def get_model(args, **kwargs):
     )
     return net
 
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0
 EPS_END = 0
 EPS_DECAY = 1000
 
-num_episodes = 100
-num_episodes_train = 10
-num_episodes_test  = 5
+num_episodes = 40000
+num_episodes_train = 1000
+num_episodes_test  = 50
 
 num_interactions = 3
 node_size = 64
@@ -119,7 +119,7 @@ class args_wrapper():
         self.output_dir = output_dir
 
 args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
-memory_mc = ReplayMemoryMonteCarlo(1000)
+memory_mc = ReplayMemoryMonteCarlo(25000)
 transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 
 # Initialise model
@@ -175,23 +175,24 @@ def select_action(state):
 
 
 def optimize_model():
-    transitions = memory_mc.sample(BATCH_SIZE)
-    batch = memory_mc.Transition(*zip(*transitions))
-    graph_states = [transformer(sa) for sa in batch.state_action]
-    batch_host = data.collate_atomsdata(graph_states)
-    batch_input = {
-        k: v.to(device=device, non_blocking=True)
-        for (k, v) in batch_host.items()
-    }
-    batch_target = torch.unsqueeze(torch.cat(batch.ret), 1)
+    if len(memory_mc) > BATCH_SIZE:
+        transitions = memory_mc.sample(BATCH_SIZE)
+        batch = memory_mc.Transition(*zip(*transitions))
+        graph_states = [transformer(sa) for sa in batch.state_action]
+        batch_host = data.collate_atomsdata(graph_states)
+        batch_input = {
+            k: v.to(device=device, non_blocking=True)
+            for (k, v) in batch_host.items()
+        }
+        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1)
 
-    # Reset gradient
-    optimizer.zero_grad()
-    # Forward, backward and optimize
-    outputs = net(batch_input)
-    loss = criterion(outputs, batch_target)
-    loss.backward()
-    optimizer.step()
+        # Reset gradient
+        optimizer.zero_grad()
+        # Forward, backward and optimize
+        outputs = net(batch_input)
+        loss = criterion(outputs, batch_target)
+        loss.backward()
+        optimizer.step()
 
 
 def plot_reward():
@@ -298,7 +299,7 @@ def test_trained_agent():
         state = env.atom_object
         reward_total = 0
         states = []
-        states.append(state)
+        states.append(env.pos)
 
         for t in count():
 
@@ -311,7 +312,7 @@ def test_trained_agent():
 
             # Move to the next state
             state = next_state
-            states.append(state)
+            states.append(env.pos)
 
             if done:
                 RL_total_rewards.append(reward_total)
