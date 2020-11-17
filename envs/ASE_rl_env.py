@@ -32,8 +32,8 @@ class ASE_RL_Env():
         self.goal_th = 0.25
         self.max_iter = 125
         self.max_force = 0.05
-        self.max_barrier = 2.5
-        self.step_size = 0.1
+        self.max_barrier = 1.5
+        self.step_size = 0.15
         self.active_dist = 4.0
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
         self.view = view
