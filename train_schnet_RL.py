@@ -13,13 +13,14 @@ import random
 from itertools import count
 import logging
 import os
+from typing import List, Tuple, Dict
 
 # Import surf-rider functionality
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
 from utils.memory_mc import ReplayMemoryMonteCarlo
 from utils.slab_params import *
-
+from utils.summary import PerformanceSummary
 import schnet_edge_model
 import data
 
@@ -238,59 +239,89 @@ def plot_reward_and_energy_barrier():
     ]
 
     color_iter = iter(colors)
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_width, fig_height), constrained_layout=True)
+    target_color = next(color_iter)
+    behavior_color = next(color_iter)
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
 
     # Plot total rewards
-    color = next(color_iter)
-    ax.plot(
+    ax[0].plot(
         np.arange(len(RL_total_rewards_avg)),
         RL_total_rewards_avg,
         zorder=1,
         label="Avg. total reward",
-        color=color,
+        color=target_color,
     )
-    ax.fill_between(
+    ax[0, 0].fill_between(
         x=np.arange(len(RL_total_rewards_avg)),
         y1=np.array(RL_total_rewards_avg) - np.array(RL_total_rewards_std),
         y2=np.array(RL_total_rewards_avg) + np.array(RL_total_rewards_std),
         alpha=0.5,
         zorder=1,
-        color=color,
+        color=target_color,
     )
+    ax[0, 0].set(xlabel='Number of episodes \times 1000')
+    plt.setp( ax[0,0].get_xticklabels(), visible=False)
+    ax[0, 0].set(ylabel='Avg. total reward')
+
 
     # Plot energy barriers
-    color = next(color_iter)
-    ax.plot(
+    ax[1, 0].plot(
         np.arange(len(RL_total_rewards_avg)),
         RL_energy_barriers_avg,
         zorder=2,
         label="Avg. energy barrier",
-        color=color,
+        color=target_color,
     )
-    ax.fill_between(
+    ax[1, 0].fill_between(
         x=np.arange(len(RL_energy_barriers_avg)),
         y1=np.array(RL_energy_barriers_avg) - np.array(RL_energy_barriers_std),
         y2=np.array(RL_energy_barriers_avg) + np.array(RL_energy_barriers_std),
         alpha=0.5,
         zorder=2,
-        color=color,
+        color=target_color,
+    )
+    ax[1, 0].set(xlabel='Number of episodes \times 1000')
+    ax[1, 0].set(ylabel='Avg. energy barrier')
+
+
+    # Plot distance covered
+    ax[1, 1].plot(
+        np.arange(len(RL_distance_covered_avg)),
+        RL_energy_barriers_avg,
+        zorder=2,
+        label="Avg. energy barrier",
+        color=target_color,
+    )
+    ax[1, 1].fill_between(
+        x=np.arange(len(RL_distance_covered_avg)),
+        y1=np.array(RL_distance_covered_avg) - np.array(RL_energy_barriers_std),
+        y2=np.array(RL_distance_covered_avg) + np.array(RL_energy_barriers_std),
+        alpha=0.5,
+        zorder=2,
+        color=target_color,
     )
 
     fig.savefig(os.path.join(output_dir, 'reward_and_energy_barrier.pdf'))
 
 
-def test_trained_agent():
+def test_trained_agent(summary, env, net, optimizer):
 
-    global RL_total_rewards
-    global RL_energy_barriers
     global RL_energy_profiles
     global best_barrier
     global best_images
 
+    global RL_total_rewards
     global RL_total_rewards_avg
     global RL_total_rewards_std
+
+    global RL_energy_barriers
     global RL_energy_barriers_avg
     global RL_energy_barriers_std
+
+    global RL_distance_covered
+    global RL_distance_covered_avg
+    global RL_distance_covered_std
 
     for i in range(num_episodes_test):
 
@@ -319,6 +350,10 @@ def test_trained_agent():
                 RL_energy_barriers.append(env.energy_barrier)
                 RL_energy_profiles.append(env.energy_profile)
 
+                RL_distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
+
+                summary.save_episode_RL(env, reward_total, states, net, optimizer)
+
                 # Save data on new best trajectory 
                 if env.energy_barrier < best_barrier:
                     best_barrier = env.energy_barrier
@@ -339,31 +374,48 @@ def test_trained_agent():
 
                 break
     
+    # Append mean and std values performance arrays
     RL_total_rewards_avg.append(np.mean(RL_total_rewards[-num_episodes_test:]))
     RL_total_rewards_std.append(np.std(RL_total_rewards[-num_episodes_test:]))
         
     RL_energy_barriers_avg.append(np.mean(RL_energy_barriers[-num_episodes_test:]))
     RL_energy_barriers_std.append(np.std(RL_energy_barriers[-num_episodes_test:]))
 
+    RL_distance_covered_avg.append(np.mean(RL_distance_covered[-num_episodes_test:]))
+    RL_distance_covered_std.append(np.std(RL_distance_covered[-num_episodes_test:]))
+
+    # Update plot
     plot_reward_and_energy_barrier()
+
+
 
 
 #####################################################################
 ############################# Main loop #############################
 #####################################################################
 
+summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_test)
+summary.save
 
 total_rewards = []
 energy_barriers=[]
 energy_profiles=[]
 
 RL_total_rewards = []
-RL_energy_barriers = []
-RL_energy_profiles = []
 RL_total_rewards_avg = []
-RL_energy_barriers_avg = []
 RL_total_rewards_std = []
+
+RL_energy_profiles = []
+RL_energy_barriers_avg = []
 RL_energy_barriers_std = []
+
+RL_distance_covered = []
+RL_distance_covered_avg = []
+RL_distance_covered_std = []
+
+RL_distance_goal = []
+RL_distance_goal_avg = []
+RL_distance_goal_std = []
 
 best_barrier = np.inf
 best_profile = []
@@ -412,6 +464,7 @@ for i_episode in range(num_episodes):
             energy_barriers.append(env.energy_barrier)
             energy_profiles.append(env.energy_profile)
 
+            summary.save_episode_behavior()
             # Calculate return for all visited states in the episode
             G = 0
             for i in np.arange(t,-1, -1):
@@ -424,9 +477,11 @@ for i_episode in range(num_episodes):
 
             # Test trained model
             if i_episode % num_episodes_train == 0:
-                test_trained_agent()
+                test_trained_agent(summary, env, net, optimizer)
 
             break
     # Update the target network, copying all weights and biases in DQN
     #if i_episode % TARGET_UPDATE == 0:
     #    target_net.load_state_dict(policy_net.state_dict())
+
+
