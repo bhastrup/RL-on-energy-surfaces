@@ -420,7 +420,9 @@ class ASE_RL_Env():
             Calculates the location of the start state
         """
         # Hollow neighbor positions
-        hnp = self.atom_object.get_positions()[self.hollow_neighbors]
-        start_prediction = np.mean(hnp + self.agent_neigh_disp_start, axis=0)
+        # hnp = self.atom_object.get_positions()[self.hollow_neighbors]
+        # start_prediction = np.mean(hnp + self.agent_neigh_disp_start, axis=0)
+
+        start_prediction = self.initial_state.get_positions()[self.agent_number]
 
         return start_prediction
