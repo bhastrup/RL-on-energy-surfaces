@@ -32,7 +32,7 @@ class PerformanceSummary():
         self.total_rewards_avg = []
         self.total_rewards_std = []
 
-        self.energy_profiles = []
+        self.energy_barriers = []
         self.energy_barriers_avg = []
         self.energy_barriers_std = []
 
@@ -53,7 +53,7 @@ class PerformanceSummary():
         self.RL_total_rewards_avg = []
         self.RL_total_rewards_std = []
 
-        self.RL_energy_profiles = []
+        self.RL_energy_barriers = []
         self.RL_energy_barriers_avg = []
         self.RL_energy_barriers_std = []
 
@@ -73,7 +73,7 @@ class PerformanceSummary():
         self.episodes_count += 1
 
         self.total_rewards.append(total_reward)
-        self.energy_profiles.append(env.energy_profile)
+        # self.energy_profiles.append(env.energy_profile)
         self.distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
         self.distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
 
@@ -82,8 +82,6 @@ class PerformanceSummary():
             self.best_profile = env.energy_profile
             self.best_images = states
 
-        self._update_data_behavior()
-
         return None
 
 
@@ -91,7 +89,7 @@ class PerformanceSummary():
         net: SchnetModel, optimizer: torch.optim.Adam) -> None:
 
         self.RL_total_rewards.append(total_reward)
-        self.RL_energy_profiles.append(env.energy_profile)
+        # self.RL_energy_profiles.append(env.energy_profile)
         self.RL_distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
         self.RL_info.append(info)
@@ -113,25 +111,23 @@ class PerformanceSummary():
                 },
                 os.path.join(self.output_dir, "best_model.pth"),
             )
-        
-        self._update_data_RL()
 
         return None
 
     def _update_data_behavior(self) -> None:
         
         # Append mean and std values performance arrays
-        self.total_rewards_avg.append(np.mean(self.total_rewards[-self.num_episodes_test:]))
-        self.total_rewards_std.append(np.std(self.total_rewards[-self.num_episodes_test:]))
+        self.total_rewards_avg.append(np.mean(self.total_rewards[-self.num_episodes_train:]))
+        self.total_rewards_std.append(np.std(self.total_rewards[-self.num_episodes_train:]))
 
-        self.energy_barriers_avg.append(np.mean(self.energy_profiles[-self.num_episodes_test:]))
-        self.energy_barriers_std.append(np.std(self.energy_profiles[-self.num_episodes_test:]))
+        self.energy_barriers_avg.append(np.mean(self.energy_barriers[-self.num_episodes_train:]))
+        self.energy_barriers_std.append(np.std(self.energy_barriers[-self.num_episodes_train:]))
 
-        self.distance_covered_avg.append(np.mean(self.distance_covered[-self.num_episodes_test:]))
-        self.distance_covered_std.append(np.std(self.distance_covered[-self.num_episodes_test:]))
+        self.distance_covered_avg.append(np.mean(self.distance_covered[-self.num_episodes_train:]))
+        self.distance_covered_std.append(np.std(self.distance_covered[-self.num_episodes_train:]))
 
-        self.distance_goal_avg.append(np.mean(self.distance_goal[-self.num_episodes_test:]))
-        self.distance_goal_std.append(np.std(self.distance_goal[-self.num_episodes_test:]))
+        self.distance_goal_avg.append(np.mean(self.distance_goal[-self.num_episodes_train:]))
+        self.distance_goal_std.append(np.std(self.distance_goal[-self.num_episodes_train:]))
 
         return None
 
@@ -142,8 +138,8 @@ class PerformanceSummary():
         self.RL_total_rewards_avg.append(np.mean(self.RL_total_rewards[-self.num_episodes_test:]))
         self.RL_total_rewards_std.append(np.std(self.RL_total_rewards[-self.num_episodes_test:]))
 
-        self.RL_energy_barriers_avg.append(np.mean(self.RL_energy_profiles[-self.num_episodes_test:]))
-        self.RL_energy_barriers_std.append(np.std(self.RL_energy_profiles[-self.num_episodes_test:]))
+        self.RL_energy_barriers_avg.append(np.mean(self.RL_energy_barriers[-self.num_episodes_test:]))
+        self.RL_energy_barriers_std.append(np.std(self.RL_energy_barriers[-self.num_episodes_test:]))
 
         self.RL_distance_covered_avg.append(np.mean(self.RL_distance_covered[-self.num_episodes_test:]))
         self.RL_distance_covered_std.append(np.std(self.RL_distance_covered[-self.num_episodes_test:]))
@@ -151,7 +147,6 @@ class PerformanceSummary():
         self.RL_distance_goal_avg.append(np.mean(self.RL_distance_goal[-self.num_episodes_test:]))
         self.RL_distance_goal_std.append(np.std(self.RL_distance_goal[-self.num_episodes_test:]))
 
-        self.
         return None
 
 
