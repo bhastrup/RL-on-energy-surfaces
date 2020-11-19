@@ -244,7 +244,7 @@ def plot_reward_and_energy_barrier():
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
 
     # Plot total rewards
-    ax[0].plot(
+    ax[0, 0].plot(
         np.arange(len(RL_total_rewards_avg)),
         RL_total_rewards_avg,
         zorder=1,
@@ -372,7 +372,9 @@ def test_trained_agent(summary, env, net, optimizer):
                     )
 
                 break
-    
+
+    summary._update_data_RL()
+
     # Append mean and std values performance arrays
     RL_total_rewards_avg.append(np.mean(RL_total_rewards[-num_episodes_test:]))
     RL_total_rewards_std.append(np.std(RL_total_rewards[-num_episodes_test:]))
@@ -404,6 +406,8 @@ RL_total_rewards_avg = []
 RL_total_rewards_std = []
 
 RL_energy_profiles = []
+
+RL_energy_barriers = []
 RL_energy_barriers_avg = []
 RL_energy_barriers_std = []
 
@@ -462,7 +466,7 @@ for i_episode in range(num_episodes):
             energy_barriers.append(env.energy_barrier)
             energy_profiles.append(env.energy_profile)
 
-            summary.save_episode_behavior()
+            summary.save_episode_behavior(env, reward_total, next_state)
             # Calculate return for all visited states in the episode
             G = 0
             for i in np.arange(t,-1, -1):
@@ -475,6 +479,7 @@ for i_episode in range(num_episodes):
 
             # Test trained model
             if i_episode % num_episodes_train == 0:
+                summary._update_data_behavior()
                 test_trained_agent(summary, env, net, optimizer)
 
             break

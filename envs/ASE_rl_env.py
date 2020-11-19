@@ -210,10 +210,10 @@ class ASE_RL_Env():
 
         # Future versions will probably contain much
         # more information than just termination info
-        info = {}
-        info["termination"] = done_info
+        # info = {}
+        # info["termination"] = done_info
 
-        return state_action, new_state, reward, done, info
+        return state_action, new_state, reward, done, done_info
 
 
     def _take_action(self, action: int) -> Atoms:
