@@ -2,6 +2,7 @@
 import os
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 from typing import List, Tuple, Dict
 from ase import Atoms
@@ -39,6 +40,9 @@ class PerformanceSummary():
         self.distance_covered_avg = []
         self.distance_covered_std = []
 
+        self.distance_goal = []
+        self.distance_goal_avg = []
+        self.distance_goal_std = []
 
         # Data for target policy
         self.RL_best_barrier = np.inf
@@ -61,28 +65,36 @@ class PerformanceSummary():
         self.RL_distance_goal_avg = []
         self.RL_distance_goal_std = []
 
-    def save_episode_behavior(self, episode: Dict) -> None:
+        self.RL_info = []
+        self.RL_info_count = [[],[],[]]
 
-        self.episodes_count = 
-        self.best_barrier = np.inf
-        self.best_profile = []
-        self.best_images = []
+    def save_episode_behavior(self, env: ASE_RL_Env, total_reward: float, states: List[Atoms]) -> None:
 
-        self.total_rewards = []
-        self.energy_profiles = []
-        self.distance_covered = []
+        self.episodes_count += 1
 
+        self.total_rewards.append(total_reward)
+        self.energy_profiles.append(env.energy_profile)
+        self.distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
+        self.distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
+
+        if env.energy_barrier < self.best_barrier:
+            self.best_barrier = env.energy_barrier
+            self.best_profile = env.energy_profile
+            self.best_images = states
+
+        self._update_data_behavior()
 
         return None
 
-    def save_episode_RL(self, env: ASE_RL_Env, total_reward: float, states: List[Atoms],
+
+    def save_episode_RL(self, env: ASE_RL_Env, total_reward: float, info: str, states: List[Atoms],
         net: SchnetModel, optimizer: torch.optim.Adam) -> None:
 
         self.RL_total_rewards.append(total_reward)
         self.RL_energy_profiles.append(env.energy_profile)
         self.RL_distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
-
+        self.RL_info.append(info)
 
         # Save data on new best trajectory 
         if env.energy_barrier < self.RL_best_barrier:
@@ -94,7 +106,7 @@ class PerformanceSummary():
                 {
                     "model": net.state_dict(),
                     "optimizer": optimizer.state_dict(),
-                    "step": self.behavior_episodes_count * ,
+                    "step": self.episodes_count * self.num_episodes_train,
                     "best_barrier": self.RL_best_barrier,
                     "best_profile": self.RL_best_profile,
                     "best_images": self.RL_best_images,
@@ -118,6 +130,9 @@ class PerformanceSummary():
         self.distance_covered_avg.append(np.mean(self.distance_covered[-self.num_episodes_test:]))
         self.distance_covered_std.append(np.std(self.distance_covered[-self.num_episodes_test:]))
 
+        self.distance_goal_avg.append(np.mean(self.distance_goal[-self.num_episodes_test:]))
+        self.distance_goal_std.append(np.std(self.distance_goal[-self.num_episodes_test:]))
+
         return None
 
 
@@ -136,10 +151,11 @@ class PerformanceSummary():
         self.RL_distance_goal_avg.append(np.mean(self.RL_distance_goal[-self.num_episodes_test:]))
         self.RL_distance_goal_std.append(np.std(self.RL_distance_goal[-self.num_episodes_test:]))
 
+        self.
         return None
 
 
-    def save_plot(self):
+    def save_plot(self) -> None:
     
         # Styling
         fig_width = 3.3
@@ -170,18 +186,29 @@ class PerformanceSummary():
 
         fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
 
-        # Plot total rewards
+        #################################################################
+        ##################### Plot total rewards ########################
+        #################################################################
+
         ax[0, 0].plot(
             step_range,
             self.total_rewards_avg,
-            zorder=1,
+            zorder=2,
             label="Behavior policy",
+            color=behavior_color,
+        )
+        ax[0, 0].fill_between(
+            x=step_range,
+            y1=np.array(self.total_rewards_avg) - np.array(self.total_rewards_std),
+            y2=np.array(self.total_rewards_avg) + np.array(self.total_rewards_std),
+            alpha=0.5,
+            zorder=1,
             color=behavior_color,
         )
         ax[0, 0].plot(
             step_range,
             self.RL_total_rewards_avg,
-            zorder=1,
+            zorder=2,
             label="Target policy",
             color=target_color,
         )
@@ -198,12 +225,22 @@ class PerformanceSummary():
         ax[0, 0].set(ylabel='Avg. total reward')
 
 
-        # Plot energy barriers
+        #################################################################
+        ##################### Plot energy barriers ######################
+        # ###############################################################
         ax[1, 0].plot(
             step_range,
             self.energy_barriers_avg,
-            zorder=1,
+            zorder=2,
             label="Behavior policy",
+            color=behavior_color,
+        )
+        ax[1, 0].fill_between(
+            x=step_range,
+            y1=np.array(self.energy_barriers_avg) - np.array(self.energy_barriers_std),
+            y2=np.array(self.energy_barriers_avg) + np.array(self.energy_barriers_std),
+            alpha=0.5,
+            zorder=1,
             color=behavior_color,
         )
         ax[1, 0].plot(
@@ -218,14 +255,49 @@ class PerformanceSummary():
             y1=np.array(self.RL_energy_barriers_avg) - np.array(self.RL_energy_barriers_std),
             y2=np.array(self.RL_energy_barriers_avg) + np.array(self.RL_energy_barriers_std),
             alpha=0.5,
-            zorder=2,
+            zorder=1,
             color=target_color,
         )
         ax[1, 0].set(xlabel='Number of episodes times ' + str(self.num_episodes_test))
         ax[1, 0].set(ylabel='Avg. energy barrier')
 
+        #################################################################
+        ###################   Plot distance covered/to goal   ###########
+        #################################################################
 
-        # Plot distance covered
+        # Behavior 
+        ax[0, 1].plot(
+            step_range,
+            self.distance_covered_avg,
+            zorder=2,
+            label="Distance to start - behavior",
+            color=behavior_color,
+        )
+        ax[0, 1].fill_between(
+            x=step_range,
+            y1=np.array(self.distance_covered_avg) - np.array(self.distance_covered_std),
+            y2=np.array(self.distance_covered_avg) + np.array(self.distance_covered_std),
+            alpha=0.5,
+            zorder=1,
+            color=behavior_color,
+        )
+        color = next(color_iter)
+        ax[0, 1].plot(
+            step_range,
+            self.distance_goal_avg,
+            zorder=2,
+            label="Distance to goal - behavior",
+            color=color,
+        )
+        ax[0, 1].fill_between(
+            x=step_range,
+            y1=np.array(self.distance_goal_avg) - np.array(self.distance_goal_std),
+            y2=np.array(self.distance_goal_avg) + np.array(self.distance_goal_std),
+            alpha=0.5,
+            zorder=1,
+            color=color,
+        )
+        # Target
         ax[0, 1].plot(
             step_range,
             self.RL_distance_covered_avg,
@@ -238,29 +310,45 @@ class PerformanceSummary():
             y1=np.array(self.RL_distance_covered_avg) - np.array(self.RL_distance_covered_std),
             y2=np.array(self.RL_distance_covered_avg) + np.array(self.RL_distance_covered_std),
             alpha=0.5,
-            zorder=2,
+            zorder=1,
             color=target_color,
         )
-        # Distance to goal
+        color = next(color_iter)
         ax[0, 1].plot(
             step_range,
             self.RL_distance_goal_avg,
             zorder=2,
             label="Distance to goal",
-            color=other_color,
+            color=color,
         )
         ax[0, 1].fill_between(
             x=step_range,
             y1=np.array(self.RL_distance_goal_avg) - np.array(self.RL_distance_goal_std),
             y2=np.array(self.RL_distance_goal_avg) + np.array(self.RL_distance_goal_std),
             alpha=0.5,
-            zorder=2,
-            color=other_color,
+            zorder=1,
+            color=color,
         )
+        
         ax[0, 1].set(ylabel='Avg. final distance to start and goal')
 
+        #################################################################
+        #####################   Plot termination info      ##############
+        #################################################################
+
         # Plot termination info (https://python-graph-gallery.com/250-basic-stacked-area-chart/)
-        ax[1, 1].stackplot(step_range, y, labels=['A','B','C'])
+
+        info_list = self.RL_info[-self.num_episodes_test]
+        termination_types = ['Goal', 'Wall', 'Max_iter']
+
+        t_count = [info_list.count(t_type) for t_type in termination_types]
+        
+        for i in range(0, len(termination_types)):
+            self.RL_info_count[i].append(t_count[i])
+
+        ax[1, 1].stackplot(step_range, self.RL_info_count, labels=termination_types)
         ax[1, 1].legend(loc='upper left')
 
-        fig.savefig(os.path.join(output_dir, 'reward_and_energy_barrier.pdf'))
+        fig.savefig(os.path.join(self.output_dir, 'PerformanceSummary.pdf'))
+
+        return None

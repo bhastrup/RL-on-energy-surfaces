@@ -94,9 +94,9 @@ EPS_START = 0
 EPS_END = 0
 EPS_DECAY = 1000
 
-num_episodes = 40000
-num_episodes_train = 1000
-num_episodes_test  = 50
+num_episodes = 100
+num_episodes_train = 10
+num_episodes_test  = 10
 
 num_interactions = 3
 node_size = 64
@@ -240,7 +240,6 @@ def plot_reward_and_energy_barrier():
 
     color_iter = iter(colors)
     target_color = next(color_iter)
-    behavior_color = next(color_iter)
 
     fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
 
@@ -295,8 +294,8 @@ def plot_reward_and_energy_barrier():
     )
     ax[1, 1].fill_between(
         x=np.arange(len(RL_distance_covered_avg)),
-        y1=np.array(RL_distance_covered_avg) - np.array(RL_energy_barriers_std),
-        y2=np.array(RL_distance_covered_avg) + np.array(RL_energy_barriers_std),
+        y1=np.array(RL_distance_covered_avg) - np.array(RL_distance_covered_std),
+        y2=np.array(RL_distance_covered_avg) + np.array(RL_distance_covered_std),
         alpha=0.5,
         zorder=2,
         color=target_color,
@@ -352,7 +351,7 @@ def test_trained_agent(summary, env, net, optimizer):
 
                 RL_distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
 
-                summary.save_episode_RL(env, reward_total, states, net, optimizer)
+                summary.save_episode_RL(env, reward_total, info, states, net, optimizer)
 
                 # Save data on new best trajectory 
                 if env.energy_barrier < best_barrier:
@@ -395,7 +394,6 @@ def test_trained_agent(summary, env, net, optimizer):
 #####################################################################
 
 summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_test)
-summary.save
 
 total_rewards = []
 energy_barriers=[]
@@ -484,4 +482,4 @@ for i_episode in range(num_episodes):
     #if i_episode % TARGET_UPDATE == 0:
     #    target_net.load_state_dict(policy_net.state_dict())
 
-
+summary.save_plot()
