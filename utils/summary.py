@@ -73,7 +73,7 @@ class PerformanceSummary():
         self.episodes_count += 1
 
         self.total_rewards.append(total_reward)
-        # self.energy_profiles.append(env.energy_profile)
+        self.energy_barriers.append(env.energy_barrier)
         self.distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
         self.distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
 
@@ -89,7 +89,7 @@ class PerformanceSummary():
         net: SchnetModel, optimizer: torch.optim.Adam) -> None:
 
         self.RL_total_rewards.append(total_reward)
-        # self.RL_energy_profiles.append(env.energy_profile)
+        self.RL_energy_barriers.append(env.energy_barrier)
         self.RL_distance_covered.append(np.linalg.norm(env.pos[env.agent_number]-env.predict_start_location()))
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
         self.RL_info.append(info)
@@ -153,11 +153,11 @@ class PerformanceSummary():
     def save_plot(self) -> None:
     
         # Styling
-        fig_width = 3.3
-        fig_height = 2.1
+        fig_width = 3.1 
+        fig_height = 3.7
 
         plt.style.use('ggplot')
-        plt.rcParams.update({'font.size': 6})
+        plt.rcParams.update({'font.size': 3})
 
         colors = [
             '#1f77b4',  # muted blue
