@@ -376,17 +376,17 @@ def test_trained_agent(summary, env, net, optimizer):
     summary._update_data_RL()
 
     # Append mean and std values performance arrays
-    RL_total_rewards_avg.append(np.mean(RL_total_rewards[-num_episodes_test:]))
-    RL_total_rewards_std.append(np.std(RL_total_rewards[-num_episodes_test:]))
+    #RL_total_rewards_avg.append(np.mean(RL_total_rewards[-num_episodes_test:]))
+    #RL_total_rewards_std.append(np.std(RL_total_rewards[-num_episodes_test:]))
         
-    RL_energy_barriers_avg.append(np.mean(RL_energy_barriers[-num_episodes_test:]))
-    RL_energy_barriers_std.append(np.std(RL_energy_barriers[-num_episodes_test:]))
+    #RL_energy_barriers_avg.append(np.mean(RL_energy_barriers[-num_episodes_test:]))
+    #RL_energy_barriers_std.append(np.std(RL_energy_barriers[-num_episodes_test:]))
 
-    RL_distance_covered_avg.append(np.mean(RL_distance_covered[-num_episodes_test:]))
-    RL_distance_covered_std.append(np.std(RL_distance_covered[-num_episodes_test:]))
+    #RL_distance_covered_avg.append(np.mean(RL_distance_covered[-num_episodes_test:]))
+    #RL_distance_covered_std.append(np.std(RL_distance_covered[-num_episodes_test:]))
 
     # Update plot
-    plot_reward_and_energy_barrier()
+    #plot_reward_and_energy_barrier()
 
 
 
