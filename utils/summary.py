@@ -80,6 +80,7 @@ class PerformanceSummary():
         if env.energy_barrier < self.best_barrier:
             self.best_barrier = env.energy_barrier
             self.best_profile = env.energy_profile
+            [s.set_calculator(None) for s in states]
             self.best_images = states
 
         return None
@@ -98,6 +99,7 @@ class PerformanceSummary():
         if env.energy_barrier < self.RL_best_barrier:
             self.RL_best_barrier = env.energy_barrier
             self.RL_best_profile = env.energy_profile
+            [s.set_calculator(None) for s in states]
             self.RL_best_images = states
 
             torch.save(
