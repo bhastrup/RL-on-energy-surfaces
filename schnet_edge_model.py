@@ -24,7 +24,7 @@ class SchnetModel(nn.Module):
         Args:
             num_interactions (int): Number of interaction layers
             hidden_state_size (int): Size of hidden node states
-            cutoff (float): Atomic interaction cutoff distance [Å]
+            cutoff (float): Atomic interaction cutoff distance [Ãƒâ€¦]
             update_edges (bool): Enable edge updates
             target_mean ([float]): Target normalisation constant
             target_stddev ([float]): Target normalisation constant
@@ -116,18 +116,48 @@ class SchnetModel(nn.Module):
             edge_state = edge_layer(edge_state, edges, nodes)
             nodes = int_layer(nodes, edges, edge_state)
 
+        # For RL transition paths - build new output from edge_states or nodes
+        # concat to edge_state
+        print("node_id_neighbors")
+        print(input_dict["node_id_neighbors"])
+        print("internal_coordiates_neighbors")
+        print(input_dict["internal_coordiates_neighbors"])
+        print("edges:")
+        print(edges)
+        print(edges.shape)
+        print("nodes a.k.a. node_state:")
+        print(nodes)
+        print(nodes.shape)
+        #print("agent_num:")
+        #print(input_dict["agent_num"])
+        #print(input_dict["agent_num"].shape)
+        #print("A:")
+        #print(input_dict["A"])
+        #print(input_dict["A"].shape)
+        print("num_edges:")
+        print(input_dict["num_edges"])
+        print(input_dict["num_edges"].shape)
+        
+        nodes_internal = layer.concat_internal_coordinates(
+            nodes, edges, input_dict["pos"], input_dict["agent_num"], input_dict["A"], input_dict["B"]
+        )
+        
+        # Apply RL readout function
+        nodes = self.readout_mlp(nodes_internal)
+        
+        
         # Apply readout function
-        nodes = self.readout_mlp(nodes)
+        #nodes = self.readout_mlp(nodes)
 
         # Obtain graph level output
         graph_output = layer.sum_splits(nodes, input_dict["num_nodes"])
 
-        # Apply (de-)normalization
-        normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)
-        graph_output = graph_output * normalizer
-        mean_shift = self.normalize_mean.unsqueeze(0)
-        if self.normalize_atomwise:
-            mean_shift = mean_shift * input_dict["num_nodes"].unsqueeze(1)
-        graph_output = graph_output + mean_shift
+        ## Apply (de-)normalization
+        #normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)
+        #graph_output = graph_output * normalizer
+        #mean_shift = self.normalize_mean.unsqueeze(0)
+        #if self.normalize_atomwise:
+        #    mean_shift = mean_shift * input_dict["num_nodes"].unsqueeze(1)
+        #graph_output = graph_output + mean_shift
 
         return graph_output

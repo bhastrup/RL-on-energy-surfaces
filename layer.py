@@ -6,6 +6,36 @@ import torch
 from torch import nn
 
 
+def concat_internal_coordinates(node_state: torch.Tensor, edges: torch.Tensor, num_edges: torch.Tensor,
+                                pos: torch.Tensor, agent_num: torch.Tensor, A: torch.Tensor, B: torch.Tensor):
+    """
+    Concatenate internal angle coordinates to node states connected to agent atom
+
+    Args:
+        node_state (tensor): Node states (num_nodes, node_size)
+        edges (tensor): Directed edges with node indices (num_edges, edge_size)
+        pos (tensor): Cartesian position of each atom (num_nodes, 3)
+        agent_num (int): Index of agent atom
+        A (tensor): Cartesian position of agent atom's start position (3)
+        B (tensor): Cartesian position of agent atom's goal position (3)
+
+    Returns:
+        (num_agent_neighbors, node_size + 3) tensor
+
+    """
+
+    torch.cat(0, num_edges)
+    for i in range(agent_num.shape):
+        calculate_internal_coordinates(node_state[0:num_edges])
+        
+    # Concatenate internal coordinates to neighboring node states
+    node_state_concat = torch.cat(
+        (nodes_state_neighbor, internal_coordiates), axis=1
+    )
+    
+    return node_state_concat
+
+
 def shifted_softplus(x):
     """
     Compute shifted soft-plus activation function.

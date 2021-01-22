@@ -93,76 +93,101 @@ class TransformRowToGraph:
         }
 
         return graph_data
-
-    def get_edges_simple(self, atoms):
-        # Compute distance matrix
-        pos = atoms.get_positions()
-        dist_mat = scipy.spatial.distance_matrix(pos, pos)
-
-        # Build array with edges and edge features (distances)
-        valid_indices_bool = dist_mat < self.cutoff
-        np.fill_diagonal(valid_indices_bool, False)  # Remove self-loops
-        edges = np.argwhere(valid_indices_bool)  # num_edges x 2
-        edges_features = dist_mat[valid_indices_bool]  # num_edges
-        edges_features = np.expand_dims(edges_features, 1)  # num_edges, 1
-
-        return edges, edges_features
-
-    def get_edges_neighborlist(self, atoms):
-        edges = []
-        edges_features = []
-
-        # Compute neighborlist
-        if (
-            np.any(atoms.get_cell().lengths() <= 0.0001)
-            or (
-                np.any(atoms.get_pbc())
-                and np.any(atoms.get_cell().lengths() < self.cutoff)
-            )
-            or ("asap3" not in sys.modules)
-        ):
-            neighborlist = AseNeigborListWrapper(self.cutoff, atoms)
-        else:
-            neighborlist = asap3.FullNeighborList(self.cutoff, atoms)
-
-        for i in range(len(atoms)):
-            neigh_idx, _, neigh_dist2 = neighborlist.get_neighbors(i, self.cutoff)
-            neigh_dist = np.sqrt(neigh_dist2)
-
-            self_index = np.ones_like(neigh_idx) * i
-            this_edges = np.stack((neigh_idx, self_index), axis=1)
-
-            edges.append(this_edges)
-            edges_features.append(neigh_dist)
-
-        return np.concatenate(edges), np.expand_dims(np.concatenate(edges_features), 1)
-
-
+    
+    
 class TransformAtomsObjectToGraph:
     def __init__(self, cutoff=5.0):
         self.cutoff = cutoff
 
-    def __call__(self, atoms):
+    def __call__(self, atoms, agent_num, A, B):
 
         if np.any(atoms.get_pbc()):
-            edges, edges_features = self.get_edges_neighborlist(atoms)
+            edges, edges_features, rel_positions = self.get_edges_neighborlist(atoms)
         else:
             edges, edges_features = self.get_edges_simple(atoms)
 
         # targets = np.array(returns)
 
         default_type = torch.get_default_dtype()
+        
+        # Find internal coordinates
+        edges = torch.LongTensor(edges)
+        agent_num = torch.tensor(agent_num)
+        # All positions are relative to receiving atom, same goes for A and B
+        pos = torch.tensor(rel_positions)
+        
+        # If agent position coincides with initial agent position, A is zero,
+        # meaning that azimut becomes undefined.
+        if (np.linalg.norm(A) == 0) or (np.linalg.norm(np.cross(A, B)) == 0):
+            A = A + 2*np.random.rand(3) - 1
+
+        #np.isnan(A).any()
+
+
+        A = torch.tensor(A)
+        B = torch.tensor(B)
+        #print(A)
+        #print(B)
+
+        # Let agent atom be origin of spherical internal coordinate system
+        # (this is achived by using the relative positions above)
+        
+        # Find edges from neighbors to agent
+        edges_neighbor = edges[edges[: , 1] == agent_num]
+
+        # Find index of neighboring node states
+        node_id_neighbor = edges_neighbor[:, 0]
+
+        # Reduce position tensor to consider only neighbor atoms
+        pos = pos[node_id_neighbor]
+        print(pos)
+        # Find angles between position vectors and B
+        alpha = torch.arccos(np.dot(pos, B)/(torch.linalg.norm(pos, axis=1)*torch.linalg.norm(B)))
+
+        # Find unit vector normal to A and B as cross product
+        AB_cross = torch.cross(A, B)
+        n = AB_cross/torch.linalg.norm(AB_cross)
+
+        # Find unit vector normal to B and n as cross product
+        Bn_cross = torch.cross(B, n)
+        Bn_cross = Bn_cross/torch.linalg.norm(Bn_cross)
+
+        # Bn_cross and n spans the perpendicular subspace corresponding to alpha=pi/2, i.e. they form a basis for the subspace.
+        # Project A onto the perpendicular subspace (https://www.cliffsnotes.com/study-guides/algebra/linear-algebra/real-euclidean-vector-spaces/projection-onto-a-subspace)
+        A_perp = (np.dot(A, Bn_cross)/np.dot(Bn_cross, Bn_cross)) * Bn_cross + (np.dot(A, n)/np.dot(n, n)) * n
+
+        # Likewise project positions onto the perpendicular subspace
+        p_perp = (np.dot(pos, Bn_cross)/torch.dot(Bn_cross, Bn_cross)).unsqueeze(1) * Bn_cross + (np.dot(pos, n)/torch.dot(n, n)).unsqueeze(1) * n
+
+        # The angle between these two projections are then caluculated as
+        dihedral_abs = torch.arccos(np.dot(p_perp, A_perp)/(torch.linalg.norm(p_perp, axis=1)*torch.linalg.norm(A_perp)))
+        kappa = torch.sign(torch.tensor(np.dot(pos, n)))
+        dihedral = kappa * dihedral_abs
+
+        # Calculate absolute distance between neighbors and agent
+        r = torch.linalg.norm(pos, axis=1)
+
+        # Collect coordinates by concatenation 
+        internal_coordiates_neighbors = torch.cat(
+            (torch.unsqueeze(alpha, dim=1), torch.unsqueeze(dihedral, dim=1), torch.unsqueeze(r, dim=1)), dim=1
+        )
 
         # pylint: disable=E1102
         graph_data = {
             "nodes": torch.tensor(atoms.get_atomic_numbers()),
             "num_nodes": torch.tensor(len(atoms.get_atomic_numbers())),
-            "edges": torch.tensor(edges),
+            "edges": edges,
             "edges_features": torch.tensor(edges_features, dtype=default_type),
-            "num_edges": torch.tensor(edges.shape[0])#,
+            "num_edges": torch.tensor(edges.shape[0]),
+            "node_id_neighbors": node_id_neighbor,
+            "internal_coordiates_neighbors": internal_coordiates_neighbors
             #"targets": torch.tensor(targets, dtype=default_type),
+            #"pos": torch.tensor(atoms.get_positions()),
+            #"agent_num": torch.tensor(agent_num),
+            #"A": ,
+            #"B": torch.tensor(B)
         }
-
+        
         return graph_data
 
 
@@ -183,6 +208,7 @@ class TransformAtomsObjectToGraph:
     def get_edges_neighborlist(self, atoms):
         edges = []
         edges_features = []
+        rel_positions = []
 
         # Compute neighborlist
         if (
@@ -198,7 +224,7 @@ class TransformAtomsObjectToGraph:
             neighborlist = asap3.FullNeighborList(self.cutoff, atoms)
 
         for i in range(len(atoms)):
-            neigh_idx, _, neigh_dist2 = neighborlist.get_neighbors(i, self.cutoff)
+            neigh_idx, rel_pos, neigh_dist2 = neighborlist.get_neighbors(i, self.cutoff)
             neigh_dist = np.sqrt(neigh_dist2)
 
             self_index = np.ones_like(neigh_idx) * i
@@ -206,8 +232,9 @@ class TransformAtomsObjectToGraph:
 
             edges.append(this_edges)
             edges_features.append(neigh_dist)
+            rel_positions.append(rel_pos)
 
-        return np.concatenate(edges), np.expand_dims(np.concatenate(edges_features), 1)
+        return np.concatenate(edges), np.expand_dims(np.concatenate(edges_features), 1), np.concatenate(rel_positions)
 
 
 class AseDbData(torch.utils.data.Dataset):
