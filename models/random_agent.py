@@ -76,7 +76,7 @@ class RandomAgent():
         else:
             action_prob = 1./self.n_actions
 
-        return action, action_prob
+        return action.item(), action_prob
 
 
     def _action_projection(self, agent_to_goal: np.ndarray) -> np.ndarray:
