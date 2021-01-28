@@ -88,15 +88,15 @@ def get_model(args, **kwargs):
     )
     return net
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 GAMMA = 0.99
 EPS_START = 0
 EPS_END = 0
 EPS_DECAY = 1000
 
-num_episodes = 100
-num_episodes_train = 10
-num_episodes_test  = 10
+num_episodes = 50 #10000
+num_episodes_train = 5 # 250
+num_episodes_test  = 5
 
 num_interactions = 3
 node_size = 64
@@ -120,7 +120,7 @@ class args_wrapper():
         self.output_dir = output_dir
 
 args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
-memory_mc = ReplayMemoryMonteCarlo(25000)
+memory_mc = ReplayMemoryMonteCarlo(50000)
 transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 
 # Initialise model
@@ -186,13 +186,13 @@ def optimize_model():
             k: v.to(device=device, non_blocking=True)
             for (k, v) in batch_host.items()
         }
-        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1)
+        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1).float();
 
         # Reset gradient
         optimizer.zero_grad()
         # Forward, backward and optimize
         outputs = net(batch_input)
-        loss = criterion(outputs, batch_target)
+        loss = criterion(outputs, batch_target);
         loss.backward()
         optimizer.step()
 
@@ -200,7 +200,7 @@ def optimize_model():
 def test_trained_agent(summary, env, net, optimizer):
 
     for i in range(num_episodes_test):
-
+        print("Target episode: " + str(i) + "/" + str(num_episodes_test))
         # Initialize the environment and state
         env.reset()
         state = env.atom_object
@@ -247,6 +247,7 @@ summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_t
 
 steps_done = 0
 for i_episode in range(num_episodes):
+    print("Behavior episode: " + str(i_episode) + "/" + str(num_episodes))
   
     # Initialize the environment and state
     env.reset()
@@ -273,7 +274,7 @@ for i_episode in range(num_episodes):
         
         # Update accumulated reward for current episode
         reward_total += reward
-        reward = torch.tensor([reward], device=device)
+        reward = torch.cuda.FloatTensor([reward], device=device)
 
         # Move to the next state
         state = next_state

@@ -47,7 +47,6 @@ class AseNeigborListWrapper:
         )
 
         dist2 = np.sum(np.square(rel_positions), axis=1)
-
         return indices, rel_positions, dist2
 
 
@@ -123,24 +122,22 @@ class TransformAtomsObjectToGraph:
 
         #np.isnan(A).any()
 
-
         A = torch.tensor(A)
         B = torch.tensor(B)
-        #print(A)
-        #print(B)
-
+        
         # Let agent atom be origin of spherical internal coordinate system
         # (this is achived by using the relative positions above)
         
         # Find edges from neighbors to agent
-        edges_neighbor = edges[edges[: , 1] == agent_num]
+        edges_neighbor_id = edges[: , 1] == agent_num
+        edges_neighbor = edges[edges_neighbor_id]
 
         # Find index of neighboring node states
         node_id_neighbor = edges_neighbor[:, 0]
 
         # Reduce position tensor to consider only neighbor atoms
-        pos = pos[node_id_neighbor]
-        print(pos)
+        pos = pos[edges_neighbor_id]
+        
         # Find angles between position vectors and B
         alpha = torch.arccos(np.dot(pos, B)/(torch.linalg.norm(pos, axis=1)*torch.linalg.norm(B)))
 
@@ -168,7 +165,7 @@ class TransformAtomsObjectToGraph:
         r = torch.linalg.norm(pos, axis=1)
 
         # Collect coordinates by concatenation 
-        internal_coordiates_neighbors = torch.cat(
+        internal_coordinates_neighbors = torch.cat(
             (torch.unsqueeze(alpha, dim=1), torch.unsqueeze(dihedral, dim=1), torch.unsqueeze(r, dim=1)), dim=1
         )
 
@@ -180,7 +177,9 @@ class TransformAtomsObjectToGraph:
             "edges_features": torch.tensor(edges_features, dtype=default_type),
             "num_edges": torch.tensor(edges.shape[0]),
             "node_id_neighbors": node_id_neighbor,
-            "internal_coordiates_neighbors": internal_coordiates_neighbors
+            "internal_coordinates_neighbors": internal_coordinates_neighbors,
+            "num_neighbors": torch.tensor(internal_coordinates_neighbors.shape[0])
+            #"rel_positions": rel_positions
             #"targets": torch.tensor(targets, dtype=default_type),
             #"pos": torch.tensor(atoms.get_positions()),
             #"agent_num": torch.tensor(agent_num),
@@ -369,3 +368,4 @@ def collate_atomsdata(graphs: List[dict], pin_memory=True):
 
     collated = {k: pin(pad_and_stack(dict_of_lists[k])) for k in dict_of_lists}
     return collated
+

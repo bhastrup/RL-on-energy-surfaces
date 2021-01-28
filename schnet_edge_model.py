@@ -62,9 +62,9 @@ class SchnetModel(nn.Module):
 
         # Setup readout function
         self.readout_mlp = nn.Sequential(
-            nn.Linear(hidden_state_size, hidden_state_size),
+            nn.Linear(hidden_state_size + 3, hidden_state_size + 3),
             layer.ShiftedSoftplus(),
-            nn.Linear(hidden_state_size, 1),
+            nn.Linear(hidden_state_size + 3, 1),
         )
 
         # Normalisation constants
@@ -85,6 +85,9 @@ class SchnetModel(nn.Module):
                                num_nodes, edges, edges_features, num_edges,
                                targets
         """
+
+
+
         # Unpad and concatenate edges and features into batch (0th) dimension
         edges_features = layer.unpad_and_cat(
             input_dict["edges_features"], input_dict["num_edges"]
@@ -118,39 +121,34 @@ class SchnetModel(nn.Module):
 
         # For RL transition paths - build new output from edge_states or nodes
         # concat to edge_state
-        print("node_id_neighbors")
-        print(input_dict["node_id_neighbors"])
-        print("internal_coordiates_neighbors")
-        print(input_dict["internal_coordiates_neighbors"])
-        print("edges:")
-        print(edges)
-        print(edges.shape)
-        print("nodes a.k.a. node_state:")
-        print(nodes)
-        print(nodes.shape)
-        #print("agent_num:")
-        #print(input_dict["agent_num"])
-        #print(input_dict["agent_num"].shape)
-        #print("A:")
-        #print(input_dict["A"])
-        #print(input_dict["A"].shape)
-        print("num_edges:")
-        print(input_dict["num_edges"])
-        print(input_dict["num_edges"].shape)
-        
-        nodes_internal = layer.concat_internal_coordinates(
-            nodes, edges, input_dict["pos"], input_dict["agent_num"], input_dict["A"], input_dict["B"]
+
+
+        # Find neighbor subset
+        nodes_state_neighbor = nodes[input_dict["node_id_neighbors"]]
+
+        # Concatenate internal coordinates to neighboring node states
+        node_state_concat = torch.cat(
+            (nodes_state_neighbor, input_dict["internal_coordinates_neighbors"]), axis=2
         )
-        
+	
+        node_state_concat = node_state_concat.view(-1, self.hidden_state_size + 3).float()
+
+	# node_id_neighbors.shape = 6, num_n
+        # nodes_state_neighbor.shape = 6, 6, 64
+	# internal_coordiates_neighbors.shape = 6, 6, 2
+	# edges.shape = 2232, 2
+        # nodes.shape = 150, 64
+	# num_edges.shape = 6 (from perturbed)
+
+
         # Apply RL readout function
-        nodes = self.readout_mlp(nodes_internal)
-        
-        
-        # Apply readout function
-        #nodes = self.readout_mlp(nodes)
+        nodes = self.readout_mlp(node_state_concat)
+
+	# Remove all invalid outputs correponding to padded edges/nodes
+        nodes = layer.remove_pad_outputs(nodes, input_dict["num_neighbors"])
 
         # Obtain graph level output
-        graph_output = layer.sum_splits(nodes, input_dict["num_nodes"])
+        graph_output = layer.sum_splits(nodes, input_dict["num_neighbors"])
 
         ## Apply (de-)normalization
         #normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)
