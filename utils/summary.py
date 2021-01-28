@@ -179,7 +179,7 @@ class PerformanceSummary():
         behavior_color = next(color_iter)
         other_color = next(color_iter)
 
-        step_range = np.arange(len(self.RL_total_rewards_avg))
+        step_range = np.arange(len(self.RL_total_rewards_avg)) * self.num_episodes_train
 
         fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
 
@@ -217,10 +217,9 @@ class PerformanceSummary():
             zorder=1,
             color=target_color,
         )
-        ax[0, 0].set(xlabel='Number of episodes times ' + str(self.num_episodes_test))
-        plt.setp( ax[0,0].get_xticklabels(), visible=False)
+        # plt.setp( ax[0,0].get_xticklabels(), visible=False)
         ax[0, 0].set(ylabel='Avg. total reward')
-
+        ax[0, 0].legend(loc='upper right')
 
         #################################################################
         ##################### Plot energy barriers ######################
@@ -255,8 +254,9 @@ class PerformanceSummary():
             zorder=1,
             color=target_color,
         )
-        ax[1, 0].set(xlabel='Number of episodes times ' + str(self.num_episodes_test))
+        ax[1, 0].set(xlabel='Number of training episodes')
         ax[1, 0].set(ylabel='Avg. energy barrier')
+        ax[1, 0].legend(loc='upper right')
 
         #################################################################
         ###################   Plot distance covered/to goal   ###########
@@ -326,7 +326,7 @@ class PerformanceSummary():
             zorder=1,
             color=color,
         )
-        
+        ax[0, 1].legend(loc='upper right')
         ax[0, 1].set(ylabel='Avg. final distance to start and goal')
 
         #################################################################
@@ -335,7 +335,7 @@ class PerformanceSummary():
 
         # Plot termination info (https://python-graph-gallery.com/250-basic-stacked-area-chart/)
 
-        info_list = self.RL_info[-self.num_episodes_test]
+        info_list = self.RL_info[-self.num_episodes_test:]
         termination_types = ['Goal', 'Wall', 'Max_iter']
 
         t_count = [info_list.count(t_type) for t_type in termination_types]
@@ -343,8 +343,14 @@ class PerformanceSummary():
         for i in range(0, len(termination_types)):
             self.RL_info_count[i].append(t_count[i])
 
+        print("self.RL_info"); print(self.RL_info)
+        print("info_list"); print(info_list)
+        print("t_count"); print(t_count)
+        print("self.RL_info_count"); print(self.RL_info_count)
+
         ax[1, 1].stackplot(step_range, self.RL_info_count, labels=termination_types)
-        ax[1, 1].legend(loc='upper left')
+        ax[1, 1].legend(loc='upper right')
+        ax[1, 1].set(xlabel='Number of training episodes')
 
         fig.savefig(os.path.join(self.output_dir, 'PerformanceSummary.pdf'))
 
