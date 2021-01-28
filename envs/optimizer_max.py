@@ -280,7 +280,7 @@ class Optimizer(Dynamics):
         # Following change is tailor made for Bjarke's Surf Rider algo:
         if self.nsteps > self.max_steps // 4:
             self.fmax *= 1.1
-            print("Increasing self.fmax by 10 percent to " + str(self.fmax))
+            # print("Increasing self.fmax by 10 percent to " + str(self.fmax))
         # https://wiki.fysik.dtu.dk/ase/_modules/ase/optimize/bfgs.html#BFGS
         # https://gitlab.com/ase/ase/-/blob/master/ase/optimize/optimize.py
 
@@ -306,7 +306,7 @@ class Optimizer(Dynamics):
             if self.nsteps == 0:
                 args = (" " * len(name), "Step", "Time", "Energy", "fmax")
                 msg = "%s  %4s %8s %15s %12s\n" % args
-                self.logfile.write(msg)
+                # self.logfile.write(msg)
 
                 if self.force_consistent:
                     msg = "*Force-consistent energies used in optimization.\n"
@@ -315,7 +315,7 @@ class Optimizer(Dynamics):
             ast = {1: "*", 0: ""}[self.force_consistent]
             args = (name, self.nsteps, T[3], T[4], T[5], e, ast, fmax)
             msg = "%s:  %3d %02d:%02d:%02d %15.6f%1s %12.4f\n" % args
-            self.logfile.write(msg)
+            # self.logfile.write(msg)
 
             self.logfile.flush()
 
