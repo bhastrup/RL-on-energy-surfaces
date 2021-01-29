@@ -6,6 +6,31 @@ import torch
 from torch import nn
 
 
+def concat_internal_coordinates(node_state: torch.Tensor):
+    """
+    Concatenate internal angle coordinates to node states connected to agent atom
+
+    Args:
+        node_state (tensor): Node states (num_nodes, node_size)
+        edges (tensor): Directed edges with node indices (num_edges, edge_size)
+
+    Returns:
+        (num_agent_neighbors, node_size + 3) tensor
+
+    """
+
+    torch.cat(0, num_edges)
+    for i in range(agent_num.shape):
+        calculate_internal_coordinates(node_state[0:num_edges])
+        
+    # Concatenate internal coordinates to neighboring node states
+    node_state_concat = torch.cat(
+        (nodes_state_neighbor, internal_coordiates), axis=1
+    )
+    
+    return node_state_concat
+
+
 def shifted_softplus(x):
     """
     Compute shifted soft-plus activation function.
@@ -46,6 +71,19 @@ def unpad_and_cat(stacked_seq: torch.Tensor, seq_len: torch.Tensor):
     return torch.cat(unpadded, dim=0)
 
 
+def remove_pad_outputs(values: torch.tensor, num_neighbors: torch.tensor):
+    """
+        Function description
+    """
+    num_neighbors_max = int(num_neighbors.max())
+    pads = num_neighbors_max - num_neighbors
+    pad_mix = torch.stack((num_neighbors, pads), axis=1).view(-1)
+    true_false = torch.tensor([True, False], device=num_neighbors.device).repeat(num_neighbors.shape[0])
+    keep_index = torch.repeat_interleave(true_false, pad_mix)
+
+    return values[keep_index]
+
+
 def sum_splits(values: torch.Tensor, splits: torch.Tensor):
     """
     Sum across dimension 0 of the tensor `values` in chunks
@@ -54,6 +92,7 @@ def sum_splits(values: torch.Tensor, splits: torch.Tensor):
     Args:
         values: Tensor of shape (`prod(splits)`, *)
         splits: 1-dimensional tensor with size of each chunk
+	num_neighbors_max: maximum number of neighbors for states in batch
 
     Returns:
         Tensor of shape (`splits.shape[0]`, *)

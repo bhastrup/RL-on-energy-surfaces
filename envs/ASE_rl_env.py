@@ -30,12 +30,14 @@ class ASE_RL_Env():
             view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.25
-        self.max_iter = 125
+        self.max_iter = 75
         self.max_force = 0.05
         self.max_barrier = 1.5
-        self.step_size = 0.15
-        self.active_dist = 4.0
+        self.step_size = 0.3
+        self.active_dist = 4.5
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
+        self.constant_penalty = -0.01
+        self.progression_reward = 1
         self.view = view
         self.view_force = view_force
         
@@ -52,6 +54,7 @@ class ASE_RL_Env():
         self.energy_profile = [self.energy]
         self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
+        self.goal_dist = self.dist_to_goal()
 
         self.action_space = self.get_action_space_6()
         self.n_actions = len(self.action_space)
@@ -178,6 +181,7 @@ class ASE_RL_Env():
         self.atom_object = self.initial_state.copy()
         calc = EMT()
         self.atom_object.set_calculator(calc)
+        self.goal_dist = self.dist_to_goal()
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
         self.energy_profile = [self.energy]
@@ -268,9 +272,14 @@ class ASE_RL_Env():
         """
             Outputs reward of transition
         """
+        # Energy
         old_energy = self.energy
         self.energy = self.atom_object.get_potential_energy()
-        reward = -(self.energy - old_energy)
+        
+        # Distance
+        old_goal_dist = self.goal_dist
+        self.goal_dist = self.dist_to_goal()
+        reward = -(self.energy - old_energy) - (self.goal_dist - old_goal_dist) + self.constant_penalty
 
         # Update energy profile, minimum energy and barrier along path
         self.energy_profile.append(self.energy)

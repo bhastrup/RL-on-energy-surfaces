@@ -24,7 +24,7 @@ class SchnetModel(nn.Module):
         Args:
             num_interactions (int): Number of interaction layers
             hidden_state_size (int): Size of hidden node states
-            cutoff (float): Atomic interaction cutoff distance [Å]
+            cutoff (float): Atomic interaction cutoff distance [Ãƒâ€¦]
             update_edges (bool): Enable edge updates
             target_mean ([float]): Target normalisation constant
             target_stddev ([float]): Target normalisation constant
@@ -60,12 +60,14 @@ class SchnetModel(nn.Module):
         else:
             self.edge_updates = [lambda e_state, e, n: e_state] * num_interactions
 
-        # Setup readout function
-        self.readout_mlp = nn.Sequential(
-            nn.Linear(hidden_state_size, hidden_state_size),
-            layer.ShiftedSoftplus(),
-            nn.Linear(hidden_state_size, 1),
+        # Setup readout function - C/2
+        self.readout_mlp_c_half = nn.Sequential(
+            nn.Linear(hidden_state_size + 3, math.ceil(hidden_state_size/2)),
+            layer.ShiftedSoftplus()
         )
+
+        # Setup readout function
+        self.readout_mlp = nn.Linear(math.ceil(hidden_state_size/2) + 1, 1)
 
         # Normalisation constants
         self.normalize_atomwise = torch.nn.Parameter(
@@ -85,6 +87,9 @@ class SchnetModel(nn.Module):
                                num_nodes, edges, edges_features, num_edges,
                                targets
         """
+
+
+
         # Unpad and concatenate edges and features into batch (0th) dimension
         edges_features = layer.unpad_and_cat(
             input_dict["edges_features"], input_dict["num_edges"]
@@ -116,18 +121,53 @@ class SchnetModel(nn.Module):
             edge_state = edge_layer(edge_state, edges, nodes)
             nodes = int_layer(nodes, edges, edge_state)
 
-        # Apply readout function
-        nodes = self.readout_mlp(nodes)
+        # For RL transition paths - build new output from edge_states or nodes
+        # concat to edge_state
+
+
+        # Find neighbor subset
+        nodes_state_neighbor = nodes[input_dict["node_id_neighbors"]]
+
+        # Concatenate internal coordinates to neighboring node states
+        node_state_concat = torch.cat(
+            (nodes_state_neighbor, input_dict["internal_coordinates_neighbors"]), axis=2
+        )
+	
+        node_state_concat = node_state_concat.view(-1, self.hidden_state_size + 3).float()
+
+	# node_id_neighbors.shape = 6, num_n
+        # nodes_state_neighbor.shape = 6, 6, 64
+	# internal_coordiates_neighbors.shape = 6, 6, 2
+	# edges.shape = 2232, 2
+        # nodes.shape = 150, 64
+	# num_edges.shape = 6 (from perturbed)
+
+
+        # Apply RL readout function
+        #nodes = self.readout_mlp(node_state_concat)
+
+        nodes_C_half = self.readout_mlp_c_half(node_state_concat)
+
+	# Remove all invalid outputs correponding to padded edges/nodes
+        nodes_C_half = layer.remove_pad_outputs(nodes_C_half, input_dict["num_neighbors"])
 
         # Obtain graph level output
-        graph_output = layer.sum_splits(nodes, input_dict["num_nodes"])
+        nodes_C_half_sum = layer.sum_splits(nodes_C_half, input_dict["num_neighbors"])
 
-        # Apply (de-)normalization
-        normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)
-        graph_output = graph_output * normalizer
-        mean_shift = self.normalize_mean.unsqueeze(0)
-        if self.normalize_atomwise:
-            mean_shift = mean_shift * input_dict["num_nodes"].unsqueeze(1)
-        graph_output = graph_output + mean_shift
+        #print("nodes_C_half_sum"); print(nodes_C_half_sum); print(nodes_C_half_sum.shape)
+        #print(input_dict["B_dist"]); print(input_dict["B_dist"]); print(input_dict["B_dist"].shape)
+        nodes_C_half_sum_cat = torch.cat(
+            (nodes_C_half_sum, torch.unsqueeze(input_dict["B_dist"], 1).float()), axis=1
+        )
+	
+        graph_output = self.readout_mlp(nodes_C_half_sum_cat)
+
+        ## Apply (de-)normalization
+        #normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)
+        #graph_output = graph_output * normalizer
+        #mean_shift = self.normalize_mean.unsqueeze(0)
+        #if self.normalize_atomwise:
+        #    mean_shift = mean_shift * input_dict["num_nodes"].unsqueeze(1)
+        #graph_output = graph_output + mean_shift
 
         return graph_output
