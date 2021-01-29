@@ -343,11 +343,6 @@ class PerformanceSummary():
         for i in range(0, len(termination_types)):
             self.RL_info_count[i].append(t_count[i])
 
-        print("self.RL_info"); print(self.RL_info)
-        print("info_list"); print(info_list)
-        print("t_count"); print(t_count)
-        print("self.RL_info_count"); print(self.RL_info_count)
-
         ax[1, 1].stackplot(step_range, self.RL_info_count, labels=termination_types)
         ax[1, 1].legend(loc='upper right')
         ax[1, 1].set(xlabel='Number of training episodes')

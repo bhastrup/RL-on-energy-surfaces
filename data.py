@@ -178,13 +178,14 @@ class TransformAtomsObjectToGraph:
             "num_edges": torch.tensor(edges.shape[0]),
             "node_id_neighbors": node_id_neighbor,
             "internal_coordinates_neighbors": internal_coordinates_neighbors,
-            "num_neighbors": torch.tensor(internal_coordinates_neighbors.shape[0])
+            "num_neighbors": torch.tensor(internal_coordinates_neighbors.shape[0]),
+            "B_dist": torch.linalg.norm(B)
             #"rel_positions": rel_positions
             #"targets": torch.tensor(targets, dtype=default_type),
             #"pos": torch.tensor(atoms.get_positions()),
             #"agent_num": torch.tensor(agent_num),
             #"A": ,
-            #"B": torch.tensor(B)
+
         }
         
         return graph_data
