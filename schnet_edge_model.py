@@ -60,12 +60,14 @@ class SchnetModel(nn.Module):
         else:
             self.edge_updates = [lambda e_state, e, n: e_state] * num_interactions
 
-        # Setup readout function
-        self.readout_mlp = nn.Sequential(
-            nn.Linear(hidden_state_size + 3, hidden_state_size + 3),
-            layer.ShiftedSoftplus(),
-            nn.Linear(hidden_state_size + 3, 1),
+        # Setup readout function - C/2
+        self.readout_mlp_c_half = nn.Sequential(
+            nn.Linear(hidden_state_size + 3, math.ceil(hidden_state_size/2)),
+            layer.ShiftedSoftplus()
         )
+
+        # Setup readout function
+        self.readout_mlp = nn.Linear(math.ceil(hidden_state_size/2) + 1, 1)
 
         # Normalisation constants
         self.normalize_atomwise = torch.nn.Parameter(
@@ -142,13 +144,23 @@ class SchnetModel(nn.Module):
 
 
         # Apply RL readout function
-        nodes = self.readout_mlp(node_state_concat)
+        #nodes = self.readout_mlp(node_state_concat)
+
+        nodes_C_half = self.readout_mlp_c_half(node_state_concat)
 
 	# Remove all invalid outputs correponding to padded edges/nodes
-        nodes = layer.remove_pad_outputs(nodes, input_dict["num_neighbors"])
+        nodes_C_half = layer.remove_pad_outputs(nodes_C_half, input_dict["num_neighbors"])
 
         # Obtain graph level output
-        graph_output = layer.sum_splits(nodes, input_dict["num_neighbors"])
+        nodes_C_half_sum = layer.sum_splits(nodes_C_half, input_dict["num_neighbors"])
+
+        #print("nodes_C_half_sum"); print(nodes_C_half_sum); print(nodes_C_half_sum.shape)
+        #print(input_dict["B_dist"]); print(input_dict["B_dist"]); print(input_dict["B_dist"].shape)
+        nodes_C_half_sum_cat = torch.cat(
+            (nodes_C_half_sum, torch.unsqueeze(input_dict["B_dist"], 1).float()), axis=1
+        )
+	
+        graph_output = self.readout_mlp(nodes_C_half_sum_cat)
 
         ## Apply (de-)normalization
         #normalizer = (1.0 / self.normalize_stddev).unsqueeze(0)

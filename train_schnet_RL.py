@@ -94,9 +94,9 @@ EPS_START = 0
 EPS_END = 0
 EPS_DECAY = 1000
 
-num_episodes = 50 #10000
-num_episodes_train = 5 # 250
-num_episodes_test  = 5
+num_episodes = 50000
+num_episodes_train = 250
+num_episodes_test  = 25
 
 num_interactions = 3
 node_size = 64
