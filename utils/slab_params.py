@@ -24,11 +24,11 @@ slab.set_calculator(calc)
 dyn = BFGS(slab, trajectory='slab.traj')
 dyn.run(fmax=0.05)
 
-
 # Specify goal configuration, B
 slab_b = slab.copy()
+slab_b.set_calculator(calc)
 slab_b[-1].x += slab.get_cell()[0, 0] / 2
-dyn_B = BFGS(slab, trajectory='slab_B.traj')
+dyn_B = BFGS(slab_b, trajectory='slab_B.traj')
 dyn_B.run(fmax=0.05)
 #view(slab_b)
 
