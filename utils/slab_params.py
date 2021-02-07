@@ -30,17 +30,6 @@ slab.set_calculator(calc)
 n_atoms = len(slab)
 agent_atom = n_atoms - 1
 
-# Create constraint for bottom layer atoms in slabs
-#active_dist = 1.5
-#all_dists = slab.get_distances(
-#    a=agent_atom,
-#    indices=list(range(n_atoms)),
-#    mic=True
-#)
-#mask = all_dists > active_dist
-#constraint = FixAtoms(mask=mask)
-#slab.set_constraint(constraint)
-
 
 # Specify initial configuration, A
 dyn = BFGS(slab, trajectory='slab.traj')
