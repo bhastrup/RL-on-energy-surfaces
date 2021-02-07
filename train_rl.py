@@ -177,7 +177,7 @@ optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(500)
 
 traj_dict = {}
-num_episodes = 3
+num_episodes = 1
 episode_reward = []
 steps_done = 0
 # plt.ion()
@@ -217,7 +217,6 @@ for i_episode in range(num_episodes):
                                         grid_3d, n_grid, radius=radius, sigma=sigma)
         else:
             next_state = None
-
         # Store the transition in memory
         memory.push(state, action, next_state, reward)
 
