@@ -5,7 +5,8 @@ from ase import io
 from ase.neb import NEB
 from ase.optimize import MDMin
 # from gpaw import GPAW, PW, FermiDirac
-from utils.slab_params import *
+# from utils.slab_params import *
+from Al_alloy import *
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,7 +29,7 @@ dft = False
 
 # Constraints, https://wiki.fysik.dtu.dk/ase/_modules/ase/constraints.html
 constrain_bottom = True
-active_dist = 1.5
+active_dist = 7
 constrain_agent_y = False
 
 # Number of images
@@ -46,7 +47,7 @@ final = io.read('slab_B.traj')
 images = [initial]
 images += [initial.copy() for i in range(n_im-2)]
 images += [final]
-neb = NEB(images, k=k_spring, method='eb')
+neb = NEB(images, k=k_spring)
 
 # Create constraint for bottom layer atoms in slabs
 if constrain_bottom:
@@ -81,6 +82,11 @@ for image in images[1:(n_im-1)]:
 
 # Interpolate linearly the potisions of the three middle images:
 neb.interpolate()
+
+# Break symmetry
+for i in range(1, (n_im-1)):
+    neb.images[i][agent_atom].x += 0.5
+    neb.images[i][agent_atom].y += -0.5
 
 # Optimize and save NEB optimization as traj
 # optimizer = MDMin(neb, trajectory='A2B.traj')
@@ -145,4 +151,3 @@ ax[1].set(xlabel="Reaction coordinate")
 ax[1].set(ylabel="Height of agent atom [Å]")
 
 fig.savefig(results_dir + 'NEB_barrier_plot_' + dt_string + '.png', bbox_inches='tight')
-
