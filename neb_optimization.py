@@ -6,7 +6,7 @@ from ase.neb import NEB
 from ase.optimize import MDMin
 # from gpaw import GPAW, PW, FermiDirac
 # from utils.slab_params import *
-from Al_alloy import *
+from utils.alloy import *
 
 import numpy as np
 import matplotlib.pyplot as plt
