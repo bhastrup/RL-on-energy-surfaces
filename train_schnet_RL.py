@@ -19,12 +19,16 @@ from typing import List, Tuple, Dict
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
 from utils.memory_mc import ReplayMemoryMonteCarlo
-from utils.slab_params import *
+#from utils.slab_params import *
+from utils.alloy import *
+
 from utils.summary import PerformanceSummary
 import schnet_edge_model
 import data
 
-
+from datetime import datetime
+now = datetime.now()
+dt_string = now.strftime("%d_%m_%H_%M")
 
 # Set up matplotlib
 import matplotlib
@@ -61,7 +65,7 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 # Setup logging
 script_dir = os.path.dirname(__file__)
-output_dir = os.path.join(script_dir, 'runs/model_output/')
+output_dir = os.path.join(script_dir, 'runs/model_output_' + dt_string + '/')
 # output_dir = "runs/model_output"
 # Setup logging
 os.makedirs(output_dir, exist_ok=True)
@@ -94,8 +98,8 @@ EPS_START = 0
 EPS_END = 0
 EPS_DECAY = 1000
 
-num_episodes = 50000
-num_episodes_train = 25
+num_episodes = 10000
+num_episodes_train = 10
 num_episodes_test  = 250
 
 num_interactions = 3
@@ -104,7 +108,7 @@ cutoff = 4.0 # assert that cutoff>np.cos(np.pi/6)*env.atom_object.get_cell().len
 update_edges = True
 atomwise_normalization = True
 max_steps = 2000
-learning_rate = 0.0005
+learning_rate = 0.001
 
 class args_wrapper():
     def __init__(self, num_interactions: int, node_size: int, cutoff: float, update_edges: bool, atomwise_normalization: bool, 
@@ -128,13 +132,19 @@ net = get_model(args)
 net = net.to(device)
 net.eval()
 
+with torch.no_grad():
+    #print(net.readout_mlp.weight)
+    net.readout_mlp.weight[0][-2] = 0.15
+    net.readout_mlp.weight[0][-1] = -0.15
+
+
 # Choose optimizer
 #optimizer = optim.RMSprop(net.parameters())
 optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)
 criterion = torch.nn.MSELoss()
 
 
-def select_action(state):
+def select_action(state, greedy=False):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
@@ -152,7 +162,7 @@ def select_action(state):
                 trial_state.set_positions(trial_pos)
                 return trial_state
 
-            perturbed_states = [perturb_state(state, a) for a in range(n_actions)]
+            perturbed_states = [perturb_state(state, a) for a in range(n_actions)];
             graph_states = [transformer(sa, agent_atom, env.predict_start_location()-sa.get_positions()[agent_atom],
                                         env.predict_goal_location()-sa.get_positions()[agent_atom]) for sa in perturbed_states]
             batch_host = data.collate_atomsdata(graph_states)
@@ -165,11 +175,21 @@ def select_action(state):
             #probs = F.softmax(net(batch), dim=0).cpu().detach().numpy().squeeze()
 
             values = net(batch).cpu().detach().numpy()
-            scaler = StandardScaler()
-            scaled_values = scaler.fit_transform(values).squeeze()
 
-            probs = softmax([scaled_values]).squeeze()
-            selected_action = np.random.choice(n_actions, p=probs)
+            if greedy:
+                selected_action = np.argmax(values)
+            else:
+                scaler = StandardScaler()
+                scaled_values = scaler.fit_transform(values).squeeze()
+                probs = softmax([scaled_values]).squeeze()
+                selected_action = np.random.choice(n_actions, p=probs)
+
+            # Make sure agent doesn't wander outside original unit cell
+            new_pos = state.get_positions()[agent_atom]+env.action_space[selected_action]
+            if new_pos[0]<=0:
+                selected_action = 1 # corresponding to +dx
+            elif new_pos[1]<=0:
+                selected_action = 3 # corresponding to +dy
 
             return selected_action, probs[selected_action]
     else:
@@ -210,15 +230,15 @@ def test_trained_agent(summary, env, net, optimizer):
         state_actions = []
         rewards = []
         for t in count():
-            
-            # Save state potential NEB image sequence
+
             states.append(state)
 
             agent_pos = env.pos[env.agent_number]
             agent_to_start = env.predict_start_location() - agent_pos
             agent_to_goal = env.predict_goal_location() - agent_pos
+            
             # Select and perform an action
-            action, prob = select_action(state)
+            action, prob = select_action(state, greedy=False)
             state_action, next_state, reward, done, info = env.step(action)
 
             # Update accumulated reward for current episode
@@ -242,7 +262,10 @@ def test_trained_agent(summary, env, net, optimizer):
                     G = GAMMA * G + rewards[i]
                     memory_mc.push(state_actions[i], G, env.agent_number, agent_to_start, agent_to_goal)
 
-                optimize_model()
+                # Optimize model (no longer after every episode)
+                if i % 3 == 0:
+                    optimize_model()
+
                 break
 
     # Update data and plot
@@ -253,12 +276,21 @@ def test_trained_agent(summary, env, net, optimizer):
 ############################# Main loop #############################
 #####################################################################
 
-summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_test, off_policy=True)
+summary = PerformanceSummary(
+    env,
+    net,
+    output_dir,
+    num_episodes_train,
+    num_episodes_test,
+    off_policy=True,
+    policy1="Random Agent",
+    policy2="Non greedy RL"
+)
 
 steps_done = 0
 for i_episode in range(num_episodes):
-    print("Behavior episode: " + str(i_episode) + "/" + str(num_episodes))
-  
+    print("Policy1 episode: " + str(i_episode) + "/" + str(num_episodes))
+
     # Initialize the environment and state
     env.reset()
     state = env.atom_object
@@ -291,13 +323,12 @@ for i_episode in range(num_episodes):
 
         # Save new observation to list
         state_actions.append(state_action)
-        
         rewards.append(reward)
         # prob_bs.append(prob_b)
 
         if done:
             # Save episode data
-            summary.save_episode_behavior(env=env, total_reward=reward_total, states=states)
+            summary.save_episode_behavior(env=env, total_reward=reward_total, info=info, states=states)
 
             # Calculate return for all visited states in the episode
             #G = 0
