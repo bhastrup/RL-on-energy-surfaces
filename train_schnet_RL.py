@@ -95,8 +95,8 @@ EPS_END = 0
 EPS_DECAY = 1000
 
 num_episodes = 50000
-num_episodes_train = 250
-num_episodes_test  = 25
+num_episodes_train = 25
+num_episodes_test  = 250
 
 num_interactions = 3
 node_size = 64
@@ -208,31 +208,41 @@ def test_trained_agent(summary, env, net, optimizer):
         reward_total = 0
         states = []
         state_actions = []
-
+        rewards = []
         for t in count():
             
             # Save state potential NEB image sequence
             states.append(state)
 
+            agent_pos = env.pos[env.agent_number]
+            agent_to_start = env.predict_start_location() - agent_pos
+            agent_to_goal = env.predict_goal_location() - agent_pos
             # Select and perform an action
             action, prob = select_action(state)
             state_action, next_state, reward, done, info = env.step(action)
 
             # Update accumulated reward for current episode
             reward_total += reward
+            reward = torch.cuda.FloatTensor([reward], device=device)
 
             # Move to the next state
             state = next_state
 
             # Save new observation to list
             state_actions.append(state_action)
-
+            rewards.append(reward)
             if done:
                 
                 # Save episode data
                 states.append(state)
-                summary.save_episode_RL(env, reward_total, info, states, net, optimizer)
+                summary.save_episode_RL(env, reward_total, info, states, net, optimizer, t)
+                # Calculate return for all visited states in the episode
+                G = 0
+                for i in np.arange(t,-1, -1):
+                    G = GAMMA * G + rewards[i]
+                    memory_mc.push(state_actions[i], G, env.agent_number, agent_to_start, agent_to_goal)
 
+                optimize_model()
                 break
 
     # Update data and plot
@@ -243,7 +253,7 @@ def test_trained_agent(summary, env, net, optimizer):
 ############################# Main loop #############################
 #####################################################################
 
-summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_test)
+summary = PerformanceSummary(env, output_dir, num_episodes_train, num_episodes_test, off_policy=True)
 
 steps_done = 0
 for i_episode in range(num_episodes):
@@ -290,16 +300,16 @@ for i_episode in range(num_episodes):
             summary.save_episode_behavior(env=env, total_reward=reward_total, states=states)
 
             # Calculate return for all visited states in the episode
-            G = 0
-            for i in np.arange(t,-1, -1):
-                G = GAMMA * G + rewards[i]
-                memory_mc.push(state_actions[i], G, env.agent_number, agent_to_start, agent_to_goal)
+            #G = 0
+            #for i in np.arange(t,-1, -1):
+            #    G = GAMMA * G + rewards[i]
+            #    memory_mc.push(state_actions[i], G, env.agent_number, agent_to_start, agent_to_goal)
             
             # Train deep RL agent
-            optimize_model()
+            #optimize_model()
 
             # Test trained agent
-            if i_episode % num_episodes_train == 0:
+            if (i_episode > 0) and (i_episode % num_episodes_train == 0):
                 summary._update_data_behavior()
                 test_trained_agent(summary, env, net, optimizer)
 
