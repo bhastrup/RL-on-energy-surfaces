@@ -67,7 +67,7 @@ class SchnetModel(nn.Module):
         )
 
         # Setup readout function
-        self.readout_mlp = nn.Linear(math.ceil(hidden_state_size/2) + 1, 1)
+        self.readout_mlp = nn.Linear(math.ceil(hidden_state_size/2) + 2, 1)
 
         # Normalisation constants
         self.normalize_atomwise = torch.nn.Parameter(
@@ -132,7 +132,7 @@ class SchnetModel(nn.Module):
         node_state_concat = torch.cat(
             (nodes_state_neighbor, input_dict["internal_coordinates_neighbors"]), axis=2
         )
-	
+
         node_state_concat = node_state_concat.view(-1, self.hidden_state_size + 3).float()
 
 	# node_id_neighbors.shape = 6, num_n
@@ -157,7 +157,7 @@ class SchnetModel(nn.Module):
         #print("nodes_C_half_sum"); print(nodes_C_half_sum); print(nodes_C_half_sum.shape)
         #print(input_dict["B_dist"]); print(input_dict["B_dist"]); print(input_dict["B_dist"].shape)
         nodes_C_half_sum_cat = torch.cat(
-            (nodes_C_half_sum, torch.unsqueeze(input_dict["B_dist"], 1).float()), axis=1
+            (nodes_C_half_sum, torch.unsqueeze(input_dict["A_dist"], 1).float(), torch.unsqueeze(input_dict["B_dist"], 1).float()), axis=1
         )
 	
         graph_output = self.readout_mlp(nodes_C_half_sum_cat)
