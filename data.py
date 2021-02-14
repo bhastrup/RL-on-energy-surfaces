@@ -156,8 +156,15 @@ class TransformAtomsObjectToGraph:
         # Likewise project positions onto the perpendicular subspace
         p_perp = (np.dot(pos, Bn_cross)/torch.dot(Bn_cross, Bn_cross)).unsqueeze(1) * Bn_cross + (np.dot(pos, n)/torch.dot(n, n)).unsqueeze(1) * n
 
-        # The angle between these two projections are then caluculated as
-        dihedral_abs = torch.arccos(np.dot(p_perp, A_perp)/(torch.linalg.norm(p_perp, axis=1)*torch.linalg.norm(A_perp)))
+        # The angle between these two projections are then caluculated as arcos(p_dot_A)
+        p_dot_A = np.dot(p_perp, A_perp)/(torch.linalg.norm(p_perp, axis=1)*torch.linalg.norm(A_perp))
+
+        # Clip p_dot_A in order to avoid nans if either -1 or 1.
+        max_val = torch.tensor([0.999])
+        min_val = torch.tensor([-0.999])
+        p_dot_A = torch.min(max_val, torch.max(min_val, p_dot_A))
+
+        dihedral_abs = torch.arccos(p_dot_A)
         kappa = torch.sign(torch.tensor(np.dot(pos, n)))
         dihedral = kappa * dihedral_abs
 
@@ -179,6 +186,7 @@ class TransformAtomsObjectToGraph:
             "node_id_neighbors": node_id_neighbor,
             "internal_coordinates_neighbors": internal_coordinates_neighbors,
             "num_neighbors": torch.tensor(internal_coordinates_neighbors.shape[0]),
+            "A_dist": torch.linalg.norm(A),
             "B_dist": torch.linalg.norm(B)
             #"rel_positions": rel_positions
             #"targets": torch.tensor(targets, dtype=default_type),
