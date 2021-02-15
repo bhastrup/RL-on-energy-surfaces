@@ -46,9 +46,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 env = ASE_RL_Env(
     initial_state=slab.copy(),
     goal_state=slab_b.copy(),
-    hollow_neighbors=hollow_neighbors,
-    goal_dists=dist_B,
-    goal_dists_periodic=dist_B_periodic,
     agent_number=agent_atom,
     view=False,
     view_force=False
@@ -100,7 +97,7 @@ EPS_DECAY = 1000
 
 num_episodes = 10000
 num_episodes_train = 10
-num_episodes_test  = 250
+num_episodes_test  = 100
 
 num_interactions = 3
 node_size = 64
@@ -109,6 +106,8 @@ update_edges = True
 atomwise_normalization = True
 max_steps = 2000
 learning_rate = 0.001
+
+n_surf = - np.array([0.,0.,1.])
 
 class args_wrapper():
     def __init__(self, num_interactions: int, node_size: int, cutoff: float, update_edges: bool, atomwise_normalization: bool, 
@@ -134,8 +133,8 @@ net.eval()
 
 with torch.no_grad():
     #print(net.readout_mlp.weight)
-    net.readout_mlp.weight[0][-2] = 0.15
-    net.readout_mlp.weight[0][-1] = -0.15
+    net.readout_mlp.weight[0][-2] = 1.
+    net.readout_mlp.weight[0][-1] = -2.
 
 
 # Choose optimizer
@@ -163,8 +162,8 @@ def select_action(state, greedy=False):
                 return trial_state
 
             perturbed_states = [perturb_state(state, a) for a in range(n_actions)];
-            graph_states = [transformer(sa, agent_atom, env.predict_start_location()-sa.get_positions()[agent_atom],
-                                        env.predict_goal_location()-sa.get_positions()[agent_atom]) for sa in perturbed_states]
+            graph_states = [transformer(sa, agent_atom, n_surf, env.predict_goal_location()-sa.get_positions()[agent_atom], 
+                            env.predict_start_location()-sa.get_positions()[agent_atom]) for sa in perturbed_states]
             batch_host = data.collate_atomsdata(graph_states)
             batch = {
                 k: v.to(device=device, non_blocking=True)
@@ -200,7 +199,7 @@ def optimize_model():
     if len(memory_mc) > BATCH_SIZE:
         transitions = memory_mc.sample(BATCH_SIZE)
         batch = memory_mc.Transition(*zip(*transitions))
-        graph_states = [transformer(sa, agent_atom, A, B) for (sa, agent_atom, A, B) in zip(batch.state_action, batch.agent_atom, batch.A, batch.B)]
+        graph_states = [transformer(sa, agent_atom, n_surf, B, A) for (sa, agent_atom, A, B) in zip(batch.state_action, batch.agent_atom, batch.A, batch.B)]
         batch_host = data.collate_atomsdata(graph_states)
         batch_input = {
             k: v.to(device=device, non_blocking=True)

@@ -25,9 +25,7 @@ from matplotlib import animation
 class ASE_RL_Env():
 
     def __init__(self, initial_state: Atoms, goal_state: Atoms,
-            hollow_neighbors: List, goal_dists: np.ndarray, 
-            goal_dists_periodic: np.ndarray, agent_number: int,
-            view: bool=False, view_force: bool=False):
+        agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.6
         self.max_iter = 100
