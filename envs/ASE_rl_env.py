@@ -30,14 +30,14 @@ class ASE_RL_Env():
         self.goal_th = 0.6
         self.max_iter = 100
         self.max_force = 0.05
-        self.max_barrier = 5.0
+        self.max_barrier = 1.0
         self.step_size = 0.15
         self.active_dist = 4.5
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
-        self.constant_reward = 0.2 # -0.003
-        self.progression_reward = 5
-        self.final_barrier_reward = - 20
-        self.goal_reward = abs(2*self.max_barrier*self.final_barrier_reward)
+        self.constant_reward = 0.01 # -0.003
+        self.progression_reward = 0.5
+        self.final_barrier_reward = 10
+        self.goal_reward = abs(1.5*self.max_barrier*self.final_barrier_reward)
 
         self.view = view
         self.view_force = view_force
@@ -61,7 +61,8 @@ class ASE_RL_Env():
         self.start_dist = self.dist_to_start()
         self.goal_dist = self.dist_to_goal()
 
-        self.action_space = self.get_action_space_6()
+        #self.action_space = self.get_action_space_6()
+        self.update_action_space_internal()
         self.n_actions = len(self.action_space)
 
         #self.hollow_neighbors = hollow_neighbors
@@ -148,6 +149,34 @@ class ASE_RL_Env():
                 action_space[i] = np.divide(action_space[i], np.linalg.norm(action_space[i])) * self.step_size
         
         return action_space
+
+
+    def update_action_space_internal(self) -> np.ndarray:
+        """
+            Creates flattened array of action displacement vectors in 3d
+            Should probably be a list instead
+        """
+
+        B = self.predict_goal_location()-self.pos[self.agent_number, :]
+        n = np.array([0., 0., -1.])
+        nB = np.cross(n, B)
+        BnB = np.cross(B, nB)
+
+        action_space = np.zeros(6, object)
+
+        action_space[0] = B
+        action_space[1] = -B
+        action_space[2] = nB
+        action_space[3] = -nB
+        action_space[4] = BnB
+        action_space[5] = -BnB
+
+        for i in range(len(action_space)):
+                action_space[i] = np.divide(action_space[i], np.linalg.norm(action_space[i])) * self.step_size
+
+        self.action_space = action_space
+
+        return None
 
 
     def initialize_viewer(self) -> None:
@@ -243,9 +272,10 @@ class ASE_RL_Env():
         # print(self.action_space[action])
         self.pos[self.agent_number, :] += self.action_space[action]
         if (self.pos[self.agent_number, 0] < 0) or (self.pos[self.agent_number, 1] < 0):
-            print("Agent moves to neighbor unit cell!!")
+            print("Agent moves to neighbor unit cell!! - new pos=" + str(self.pos[self.agent_number, :]))
 
         self.atom_object.set_positions(self.pos)
+        self.update_action_space_internal()
 
         return self.atom_object.copy()
 
@@ -298,7 +328,7 @@ class ASE_RL_Env():
         self.goal_dist = self.dist_to_goal()
         self.start_dist = self.dist_to_start()
 
-        reward = -(self.energy - old_energy) \
+        reward = -0.25*(self.energy - old_energy) \
             + self.constant_reward \
             + self.progression_reward * (self.start_dist - old_start_dist) \
             - self.progression_reward * (self.goal_dist - old_goal_dist)
@@ -339,9 +369,7 @@ class ASE_RL_Env():
             done = True
             info = "Max_iter"
             if self.test_goal(3*self.goal_th):
-                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(3*self.goal_th)))
-            else:
-                terminal_reward = -self.max_barrier
+                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(2*self.goal_th)))
 
         return done, info, terminal_reward
 

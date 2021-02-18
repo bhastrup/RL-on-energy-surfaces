@@ -1,14 +1,13 @@
-
 import random
 from collections import namedtuple
 
-class ReplayMemory(object):
+class ReplayMemoryMonteCarlo(object):
 
     def __init__(self, capacity):
         self.capacity = capacity
         self.memory = []
         self.Transition = namedtuple('Transition',
-            ('state', 'action', 'next_state', 'reward', 'A', 'B'))
+            ('state_action', 'ret', 'agent_atom', 'A', 'B'))
         self.position = 0
 
     def push(self, *args):

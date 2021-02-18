@@ -113,6 +113,7 @@ class PerformanceSummary():
         self.start_pos_top_layer = env.initial_state.get_positions()[[atom.tag < 2 for atom in env.initial_state]]
         self.goal_pos = env.goal_state.get_positions()[env.agent_number]
         self.RL_final_pos = []
+        self.best_path_pos = []
 
     def save_episode_behavior(self, env: ASE_RL_Env, total_reward: float, info: str, states: List[Atoms]) -> None:
 
@@ -145,7 +146,10 @@ class PerformanceSummary():
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
         self.RL_info.append(info)
 
-        self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
+        if net.state_dict()["readout_mlp.weight"].shape[0] == 6:
+            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"][0].squeeze().tolist())
+        else:
+            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
         #self.RL_readout_mlp_c_half_w.append(net.state_dict()["readout_mlp_c_half.0.weight"].squeeze().tolist())
 
         # Heatmap
@@ -160,7 +164,8 @@ class PerformanceSummary():
                 # We have a new best path
                 new_best = True
                 self.best_dist_to_goal = self.RL_distance_goal[-1]
-                
+                self.RL_best_path_pos = [s.get_positions()[env.agent_number] for s in states]
+
                 # Switch criteria?
                 if self.RL_info.count('Goal') > 0:
                     self.best_criteria = "energy_barrier"
@@ -173,6 +178,7 @@ class PerformanceSummary():
                 self.RL_best_profile = env.energy_profile
                 [s.set_calculator(None) for s in states]
                 self.RL_best_images = states
+                self.RL_best_path_pos = [s.get_positions()[env.agent_number] for s in states]
             else:
                 new_best = False
 
@@ -189,6 +195,7 @@ class PerformanceSummary():
                 "RL_best_images": self.RL_best_images,
                 "RL_best_barrier": self.RL_best_barrier,
                 "RL_best_profile": self.RL_best_profile,
+                "RL_best_path_pos": self.RL_best_path_pos,
                 "best_count": self.best_count,
                 "RL_episodes_count": self.RL_episodes_count,
                 "RL_total_rewards": self.RL_total_rewards,
@@ -514,6 +521,10 @@ class PerformanceSummary():
 
         ax[2, 1].text(self.start_pos[0]-0.4, self.start_pos[1] + 0.4, 'START', c='white', fontsize=2)
         ax[2, 1].text(self.goal_pos[0]-0.4, self.goal_pos[1] + 0.4, 'GOAL', c='white', fontsize=2)
+
+        path = np.array(self.RL_best_path_pos)
+        print(path)
+        ax[2, 1].plot(path[:, 0], path[:, 1], linewidth=0.2, color="red")
 
 
         #################################################################

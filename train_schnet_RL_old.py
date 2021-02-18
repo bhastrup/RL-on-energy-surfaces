@@ -18,15 +18,12 @@ from typing import List, Tuple, Dict
 # Import surf-rider functionality
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
-from utils.memory import ReplayMemory
-from utils.memory_mc import ReplayMemoryMonteCarlo
-
+from utils.memory_mc_old import ReplayMemoryMonteCarlo
 #from utils.slab_params import *
 from utils.alloy import *
 
 from utils.summary import PerformanceSummary
 import schnet_edge_model
-import schnet_edge_model_action
 import data
 
 from datetime import datetime
@@ -43,10 +40,7 @@ if is_ipython:
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-if device==torch.device("cuda"):
-    pin=True
-else:
-    pin=False
+
 
 # Initialize reinforcement learning environment
 env = ASE_RL_Env(
@@ -85,7 +79,7 @@ logging.basicConfig(
 
 
 def get_model(args, **kwargs):
-    net = schnet_edge_model_action.SchnetModel(
+    net = schnet_edge_model.SchnetModel(
         num_interactions=args.num_interactions,
         hidden_state_size=args.node_size,
         cutoff=args.cutoff,
@@ -95,16 +89,11 @@ def get_model(args, **kwargs):
     )
     return net
 
-# Hyper parameters
-algorithm = "Monte-Carlo"
-boltzmann = True
-T_BOLTZ = 0.25
 BATCH_SIZE = 64
-GAMMA = 0.999
-EPS_START = 0.1
-EPS_END = 0.05
-EPS_DECAY = 15000
-TARGET_UPDATE = 10
+GAMMA = 0.99
+EPS_START = 0
+EPS_END = 0
+EPS_DECAY = 1000
 
 num_episodes = 10000
 num_episodes_train = 10
@@ -134,32 +123,18 @@ class args_wrapper():
         self.output_dir = output_dir
 
 args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
+memory_mc = ReplayMemoryMonteCarlo(50000)
 transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 
 # Initialise model
-if algorithm == "Q-learning":
-    from utils.memory import ReplayMemory
-    memory = ReplayMemory(50000)
-    net = get_model(args).to(device)
-    #net = net.double()
-    net.eval()
+net = get_model(args)
+net = net.to(device)
+net.eval()
 
-    #with torch.no_grad():
-    #    #print(net.readout_mlp.weight)
-    #    net.readout_mlp.weight[0][-2] = 1.15
-    #    net.readout_mlp.weight[0][-1] = -2.15
-
-    target_net = get_model(args).to(device)
-    target_net.load_state_dict(net.state_dict())
-    #target_net = target_net.double()
-    target_net.eval()
-elif algorithm == "Monte-Carlo":
-    from utils.memory_mc import ReplayMemoryMonteCarlo
-    memory = ReplayMemoryMonteCarlo(50000)
-    net = get_model(args)
-    net = net.to(device)
-    net.eval()
-
+with torch.no_grad():
+    #print(net.readout_mlp.weight)
+    net.readout_mlp.weight[0][-2] = 1.
+    net.readout_mlp.weight[0][-1] = -2.
 
 
 # Choose optimizer
@@ -221,7 +196,8 @@ def select_action(state, greedy=False):
 
 
 
-def select_actionQ(state, boltzmann=False):
+
+def select_actionQ(state, greedy=False):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
@@ -233,42 +209,49 @@ def select_actionQ(state, boltzmann=False):
             # second column on max result is index of where max element was
             # found, so we pick action with the larger expected reward.
 
+            perturbed_states = [state]
             B = env.predict_goal_location()-state.get_positions()[agent_atom]
             A = env.predict_start_location()-state.get_positions()[agent_atom]
             graph_states = [transformer(state, agent_atom, n_surf, B, A)]
-            batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
+            batch_host = data.collate_atomsdata(graph_states)
             batch = {
                 k: v.to(device=device, non_blocking=True)
                 for (k, v) in batch_host.items()
             }
 
-            q_values = net(batch)
-            
-            if boltzmann:
-                scaler = StandardScaler()
-                q_values_standard = scaler.fit_transform(q_values.view(-1,1).cpu().detach().numpy())
-                q_values_boltzmann = q_values_standard / T_BOLTZ
-                probs = softmax([q_values_boltzmann]).squeeze()
-                selected_action = np.random.choice(n_actions, p=probs)
+            print(net(batch))
+            print(net(batch).max(0))
+            print(net(batch).max(0)[1])
+            print(net(batch).max(0)[1].view(1, 1))
+            return net(batch).max(0)[1].view(1, 1)
+            #probs = F.softmax(net(batch), dim=0).cpu().detach().numpy().squeeze()
+
+            values = net(batch).cpu().detach().numpy()
+
+            if greedy:
+                selected_action = np.argmax(values)
             else:
-                selected_action = int(q_values.max(1)[1])
+                scaler = StandardScaler()
+                scaled_values = scaler.fit_transform(values).squeeze()
+                probs = softmax([scaled_values]).squeeze()
+                selected_action = np.random.choice(n_actions, p=probs)
 
+            # Make sure agent doesn't wander outside original unit cell
+            new_pos = state.get_positions()[agent_atom]+env.action_space[selected_action]
+            if new_pos[0]<=0:
+                selected_action = 1 # corresponding to +dx
+            elif new_pos[1]<=0:
+                selected_action = 3 # corresponding to +dy
+
+            return selected_action, probs[selected_action]
     else:
-        selected_action = random.randrange(n_actions)
+        return random.randrange(n_actions)
 
-    # Make sure agent doesn't wander outside original unit cell
-    new_pos = state.get_positions()[agent_atom]+env.action_space[selected_action]
-    if (new_pos[0]<=0) or (new_pos[1]<=0):
-        selected_action = 0 # corresponding to B
-    elif (new_pos[0]>= env.atom_object.get_cell()[0, 0]) or (new_pos[1]>= env.atom_object.get_cell()[1, 1]):
-        selected_action = 0 # corresponding to B
-
-    return selected_action
 
 def optimize_model():
-    if len(memory) > BATCH_SIZE:
-        transitions = memory.sample(BATCH_SIZE)
-        batch = memory.Transition(*zip(*transitions))
+    if len(memory_mc) > BATCH_SIZE:
+        transitions = memory_mc.sample(BATCH_SIZE)
+        batch = memory_mc.Transition(*zip(*transitions))
         graph_states = [transformer(sa, agent_atom, n_surf, B, A) for (sa, agent_atom, A, B) in zip(batch.state_action, batch.agent_atom, batch.A, batch.B)]
         batch_host = data.collate_atomsdata(graph_states)
         batch_input = {
@@ -285,72 +268,6 @@ def optimize_model():
         loss.backward()
         optimizer.step()
 
-def optimize_model6():
-    if len(memory) > BATCH_SIZE:
-        transitions = memory.sample(BATCH_SIZE)
-        batch = memory.Transition(*zip(*transitions))
-
-        graph_states = [transformer(s, agent_atom, n_surf, B, A) for (s, agent_atom, A, B) in zip(batch.state, batch.agent_atom, batch.A, batch.B)]
-        batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
-        batch_input = {
-            k: v.to(device=device, non_blocking=True)
-            for (k, v) in batch_host.items()
-        }
-        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1).float().detach()
-
-        # Forward, backward and optimize
-        action_batch = torch.tensor(batch.action, device=device).long().unsqueeze(1)
-        state_action_values = net(batch_input).gather(1, action_batch)
-        loss = criterion(state_action_values, batch_target)
-        optimizer.zero_grad()
-        loss.backward()
-        # print("loss.grad = " + str(net.state_dict()["readout_mlp.weight"][0,-2:]))
-        optimizer.step()
-
-def optimize_modelQ():
-    if len(memory) < BATCH_SIZE:
-        return
-    transitions = memory.sample(BATCH_SIZE)
-    batch = memory.Transition(*zip(*transitions))
-    reward_batch = torch.cat(batch.reward)
-
-    # Graph state
-    graph_states = [transformer(s, env.agent_number, n_surf, B, A) for (s, A, B) in zip(batch.state, batch.A, batch.B)]
-    batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
-    batch_input = {
-        k: v.to(device=device, non_blocking=True)
-        for (k, v) in batch_host.items()
-    }
-    # Predicted state-action values
-    action_batch = torch.tensor(batch.action, device=device).long().unsqueeze(1)
-    state_action_values = net(batch_input).gather(1, action_batch)
-
-    # Graph next_state
-    #A_next, B_next = get_A_and_B(batch.next_state, env)
-    A_next = tuple([env.predict_start_location() - s.get_positions()[env.agent_number] for s in batch.next_state])
-    B_next = tuple([env.predict_goal_location() - s.get_positions()[env.agent_number] for s in batch.next_state])
-    graph_states_next = [transformer(s, env.agent_number, n_surf, B, A) for (s, A, B) in zip(batch.next_state, A_next, B_next)]
-    batch_host_next = data.collate_atomsdata(graph_states_next, pin_memory=pin)
-    batch_input_next = {
-        k: v.to(device=device, non_blocking=True)
-        for (k, v) in batch_host_next.items()
-    }
-    # Evalute next state value (regression target)
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)# .double()
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                          batch.next_state)), device=device, dtype=torch.bool)
-    next_state_values[non_final_mask] = target_net(batch_input_next).max(1)[0].detach()
-    state_action_values_target = (next_state_values * GAMMA) + reward_batch
-
-    # Compute Huber loss
-    loss = F.smooth_l1_loss(state_action_values, state_action_values_target.float().unsqueeze(1))
-
-    # Optimize the model
-    optimizer.zero_grad()
-    loss.backward()
-    #for param in net.parameters():
-    #    param.grad.data.clamp_(-1, 1)
-    optimizer.step()
 
 def test_trained_agent(summary, env, net, optimizer):
 
@@ -362,55 +279,46 @@ def test_trained_agent(summary, env, net, optimizer):
 
         reward_total = 0
         states = []
-        actions = []
+        state_actions = []
         rewards = []
-        A_vec = []
-        B_vec = []
         for t in count():
 
             states.append(state)
+
             agent_pos = env.pos[env.agent_number]
-            A_vec.append(env.predict_start_location() - agent_pos)
-            B_vec.append(env.predict_goal_location() - agent_pos)
+            agent_to_start = env.predict_start_location() - agent_pos
+            agent_to_goal = env.predict_goal_location() - agent_pos
             
             # Select and perform an action
-            action = select_actionQ(state, boltzmann=boltzmann)
+            action, prob = select_action(state, greedy=False)
             state_action, next_state, reward, done, info = env.step(action)
 
             # Update accumulated reward for current episode
             reward_total += reward
-            reward = torch.tensor([reward], device=device)
-
-            if algorithm == "Q-learning":
-                # Store the transition in memory
-                memory.push(state, action, next_state, reward, A_vec[-1], B_vec[-1])
+            reward = torch.cuda.FloatTensor([reward], device=device)
 
             # Move to the next state
             state = next_state
 
             # Save new observation to list
-            actions.append(action)
+            state_actions.append(state_action)
             rewards.append(reward)
-
             if done:
-                break
+                
+                # Save episode data
+                states.append(state)
+                summary.save_episode_RL(env, reward_total, info, states, net, optimizer, t)
+                # Calculate return for all visited states in the episode
+                G = 0
+                for i in np.arange(t,-1, -1):
+                    G = GAMMA * G + rewards[i]
+                    memory_mc.push(state_actions[i], G, env.agent_number, agent_to_start, agent_to_goal)
 
-        # Save episode data
-        summary.save_episode_RL(env, reward_total, info, states, net, optimizer, t)
-        if algorithm == "Monte-Carlo":
-            # Calculate return for all visited states in the episode
-            G = 0
-            for it in np.arange(t,-1, -1):
-                G = GAMMA * G + rewards[it]
-                memory.push(states[it], actions[it], G, env.agent_number, A_vec[it], B_vec[it])
-            # Optimize model (no longer after every episode)
-            if (i > 0) and (i % 1 == 0):
-                optimize_model6()
-        elif algorithm == "Q-learning":
-            optimize_modelQ()
-            # Update the target network, copying all weights and biases in DQN
-            if i % TARGET_UPDATE == 0:
-                target_net.load_state_dict(net.state_dict())
+                # Optimize model (no longer after every episode)
+                if i % 3 == 0:
+                    optimize_model()
+
+                break
 
     # Update data and plot
     summary._update_data_RL()
@@ -440,7 +348,7 @@ for i_episode in range(num_episodes):
     state = env.atom_object
 
     states = []
-    actions = []
+    state_actions = []
     rewards = []
     reward_total = 0
     prob_bs = []
@@ -466,7 +374,7 @@ for i_episode in range(num_episodes):
         state = next_state
 
         # Save new observation to list
-        actions.append(action)
+        state_actions.append(state_action)
         rewards.append(reward)
         # prob_bs.append(prob_b)
 
