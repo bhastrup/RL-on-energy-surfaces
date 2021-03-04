@@ -38,38 +38,21 @@ class ASE_RL_Env():
         self.progression_reward = 0.5
         self.final_barrier_reward = 10
         self.goal_reward = abs(1.5*self.max_barrier*self.final_barrier_reward)
+        self.profile_coef = 4
 
         self.view = view
         self.view_force = view_force
-        
         self.initial_state = initial_state
         self.goal_state = goal_state
+        calc = EMT()
+        self.goal_state.set_calculator(calc)
+        self.goal_energy = self.goal_state.get_potential_energy()
         self.num_atoms = len(self.initial_state)
         self.agent_number = agent_number
 
-        self.atom_object = initial_state.copy()
-        calc = EMT()
-        self.atom_object.set_calculator(calc)
-        self.relaxer = BFGS(self.atom_object)
-        self.energy = self.atom_object.get_potential_energy()
-        self.goal_state.set_calculator(calc)
-        self.goal_energy = self.goal_state.get_potential_energy()
-        self.min_energy = self.energy
-        self.energy_profile = [self.energy]
-        self.energy_barrier = 0
-        self.pos = self.atom_object.get_positions()
-        self.start_dist = self.dist_to_start()
-        self.goal_dist = self.dist_to_goal()
+        self.reset()
 
-        #self.action_space = self.get_action_space_6()
-        self.update_action_space_internal()
         self.n_actions = len(self.action_space)
-
-        #self.hollow_neighbors = hollow_neighbors
-        #self.goal_dists = goal_dists
-        #self.goal_dists_periodic=goal_dists_periodic
-
-
         # Distance from goal agent to nearest neighbor atoms
         self.goal_neighbors = (np.linalg.norm(
             goal_state.get_positions()[agent_number] - goal_state.get_positions()[:-1], axis=1)).argsort()[:4]
@@ -93,7 +76,6 @@ class ASE_RL_Env():
         #goal_pos_neighbors = goal_state.get_positions()[hollow_neighbors]
         #self.agent_neigh_disp_goal = goal_pos_agent - goal_pos_neighbors
 
-        self.iter = 0
 
         self.script_dir = os.path.dirname(__file__)
 
@@ -221,13 +203,15 @@ class ASE_RL_Env():
         self.atom_object = self.initial_state.copy()
         calc = EMT()
         self.atom_object.set_calculator(calc)
-        self.goal_dist = self.dist_to_goal()
-        self.start_dist = self.dist_to_start()
+        self.relaxer = BFGS(self.atom_object)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
         self.energy_profile = [self.energy]
         self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
+        self.goal_dist = self.dist_to_goal()
+        self.start_dist = self.dist_to_start()
+        self.update_action_space_internal()
 
         if self.view:
             self.initialize_viewer()
@@ -358,7 +342,9 @@ class ASE_RL_Env():
             # a) Has goal site been reached?
             done = True
             info = "Goal"
-            terminal_reward = -self.final_barrier_reward*self.energy_barrier + self.goal_reward + (self.energy - self.goal_energy)
+            terminal_reward = - self.final_barrier_reward*self.energy_barrier + self.goal_reward \
+                              + (self.energy - self.goal_energy) \
+                              - self.profile_coef * np.mean(np.array(self.energy_profile) - self.energy_profile[0])
         elif self.energy_barrier > self.max_barrier:
             # b) Has energy wall been struck?
             done = True
