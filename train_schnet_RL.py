@@ -1,4 +1,5 @@
 
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +10,7 @@ from sklearn.utils.extmath import softmax
 
 import math
 import numpy as np
+np.seterr(all='raise')
 import random
 from itertools import count
 import logging
@@ -23,8 +25,10 @@ from utils.memory_mc import ReplayMemoryMonteCarlo
 
 #from utils.slab_params import *
 from utils.alloy import *
-
+from utils.alloymap import AlloyGenerator
 from utils.summary import PerformanceSummary
+from utils.mirror import mirror
+
 import schnet_edge_model
 import schnet_edge_model_action
 import data
@@ -96,8 +100,12 @@ def get_model(args, **kwargs):
     return net
 
 # Hyper parameters
+random_alloy = False
 algorithm = "Monte-Carlo"
+DOUBLE_Q = False
 boltzmann = True
+dublicate_mirror = True
+mirror_action_space = np.array([0, 1, 3, 2, 4, 5])
 T_BOLTZ = 0.25
 BATCH_SIZE = 64
 GAMMA = 0.999
@@ -105,10 +113,11 @@ EPS_START = 0.1
 EPS_END = 0.05
 EPS_DECAY = 15000
 TARGET_UPDATE = 10
+Q_update = 3
 
 num_episodes = 10000
 num_episodes_train = 10
-num_episodes_test  = 10
+num_episodes_test  = 25
 
 num_interactions = 3
 node_size = 64
@@ -140,19 +149,20 @@ transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 if algorithm == "Q-learning":
     from utils.memory import ReplayMemory
     memory = ReplayMemory(50000)
-    net = get_model(args).to(device)
-    #net = net.double()
-    net.eval()
-
-    #with torch.no_grad():
-    #    #print(net.readout_mlp.weight)
-    #    net.readout_mlp.weight[0][-2] = 1.15
-    #    net.readout_mlp.weight[0][-1] = -2.15
-
-    target_net = get_model(args).to(device)
-    target_net.load_state_dict(net.state_dict())
-    #target_net = target_net.double()
-    target_net.eval()
+    if DOUBLE_Q:
+        netA = get_model(args).to(device)
+        netA.eval()
+        optimizerA = torch.optim.Adam(netA.parameters())
+        netB = get_model(args).to(device)
+        #netB.load_state_dict(netA.state_dict())
+        netB.eval()
+        optimizerB = torch.optim.Adam(netB.parameters())
+    else:
+        net = get_model(args).to(device)
+        net.eval()
+        target_net = get_model(args).to(device)
+        target_net.load_state_dict(net.state_dict())
+        target_net.eval()
 elif algorithm == "Monte-Carlo":
     from utils.memory_mc import ReplayMemoryMonteCarlo
     memory = ReplayMemoryMonteCarlo(50000)
@@ -160,11 +170,14 @@ elif algorithm == "Monte-Carlo":
     net = net.to(device)
     net.eval()
 
+if random_alloy:
+    alloy = AlloyGenerator()
 
+if DOUBLE_Q == False:
+    # Choose optimizer
+    # optimizer = optim.RMSprop(net.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(net.parameters())
 
-# Choose optimizer
-#optimizer = optim.RMSprop(net.parameters())
-optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)
 criterion = torch.nn.MSELoss()
 
 
@@ -242,11 +255,18 @@ def select_actionQ(state, boltzmann=False):
                 for (k, v) in batch_host.items()
             }
 
-            q_values = net(batch)
-            
+            if DOUBLE_Q:
+                q_values = 0.5 * (netA(batch) + netB(batch))
+            else:
+                q_values = net(batch)
+
             if boltzmann:
                 scaler = StandardScaler()
-                q_values_standard = scaler.fit_transform(q_values.view(-1,1).cpu().detach().numpy())
+                q_values = q_values.view(-1,1).cpu().detach().numpy()
+                #print(q_values)
+                #if sum([(q_i - q_values.mean())**2 for q_i in q_values]) == 0.:
+                #    print("Identical Q-values!! - Can't do Boltzmann")
+                q_values_standard = scaler.fit_transform(q_values)
                 q_values_boltzmann = q_values_standard / T_BOLTZ
                 probs = softmax([q_values_boltzmann]).squeeze()
                 selected_action = np.random.choice(n_actions, p=probs)
@@ -323,7 +343,15 @@ def optimize_modelQ():
     }
     # Predicted state-action values
     action_batch = torch.tensor(batch.action, device=device).long().unsqueeze(1)
-    state_action_values = net(batch_input).gather(1, action_batch)
+    if DOUBLE_Q == True:
+        # Flip coin
+        coin_flip = int(np.random.choice(a=[0,1], size=1))
+        if coin_flip == 0:
+            state_action_values = netA(batch_input).gather(1, action_batch)
+        else:
+            state_action_values = netB(batch_input).gather(1, action_batch)
+    else:
+        state_action_values = net(batch_input).gather(1, action_batch)
 
     # Graph next_state
     #A_next, B_next = get_A_and_B(batch.next_state, env)
@@ -336,29 +364,67 @@ def optimize_modelQ():
         for (k, v) in batch_host_next.items()
     }
     # Evalute next state value (regression target)
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)# .double()
+    next_state_values = torch.zeros(BATCH_SIZE, device=device)
     non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                           batch.next_state)), device=device, dtype=torch.bool)
-    next_state_values[non_final_mask] = target_net(batch_input_next).max(1)[0].detach()
+    if DOUBLE_Q == True:
+        if coin_flip == 0:
+            a_argmax = netA(batch_input_next).max(1)[1].detach().unsqueeze(1)
+            next_state_values[non_final_mask] = netB(batch_input_next).detach().gather(1, a_argmax).squeeze()
+        else:
+            a_argmax = netB(batch_input_next).max(1)[1].detach().unsqueeze(1)
+            next_state_values[non_final_mask] = netA(batch_input_next).detach().gather(1, a_argmax).squeeze()
+    else:
+        next_state_values[non_final_mask] = target_net(batch_input_next).max(1)[0].detach()
+
     state_action_values_target = (next_state_values * GAMMA) + reward_batch
 
     # Compute Huber loss
-    loss = F.smooth_l1_loss(state_action_values, state_action_values_target.float().unsqueeze(1))
+    #loss = F.smooth_l1_loss(state_action_values, state_action_values_target.float().unsqueeze(1))
+    loss = criterion(state_action_values, state_action_values_target.float().unsqueeze(1))
 
     # Optimize the model
-    optimizer.zero_grad()
-    loss.backward()
-    #for param in net.parameters():
-    #    param.grad.data.clamp_(-1, 1)
-    optimizer.step()
+    if DOUBLE_Q == True:
+        if coin_flip == 0:
+            optimizerA.zero_grad
+            loss.backward()
+            for param in netA.parameters():
+                if param.grad is not None:
+                    param.grad.data.clamp_(-1, 1)
+            optimizerA.step()
+        else:
+            optimizerB.zero_grad
+            loss.backward()
+            for param in netB.parameters():
+                if param.grad is not None:
+                    param.grad.data.clamp_(-1, 1)
+            optimizerB.step()
+    else:
+        optimizer.zero_grad()
+        loss.backward()
+        #for param in net.parameters():
+        #    param.grad.data.clamp_(-1, 1)
+        optimizer.step()
 
-def test_trained_agent(summary, env, net, optimizer):
+def test_trained_agent(env):
+    if random_alloy:
+        # Sample top two layers
+        alloy_atoms = alloy.sample()
+        slab, slab_b = alloy.get_relaxed_alloy_map(alloy_atoms=alloy_atoms, map=4)
+        # Initialize reinforcement learning environment
+        env = ASE_RL_Env(
+            initial_state=slab.copy(),
+            goal_state=slab_b.copy(),
+            agent_number=agent_atom,
+            view=False,
+            view_force=False
+        )
 
     for i in range(num_episodes_test):
         print("Target episode: " + str(i) + "/" + str(num_episodes_test))
         # Initialize the environment and state
         env.reset()
-        state = env.atom_object
+        state = env.atom_object.copy()
 
         reward_total = 0
         states = []
@@ -384,9 +450,11 @@ def test_trained_agent(summary, env, net, optimizer):
             if algorithm == "Q-learning":
                 # Store the transition in memory
                 memory.push(state, action, next_state, reward, A_vec[-1], B_vec[-1])
+                if t % Q_update == 0:
+                    optimize_modelQ()
 
             # Move to the next state
-            state = next_state
+            state = next_state.copy()
 
             # Save new observation to list
             actions.append(action)
@@ -396,21 +464,26 @@ def test_trained_agent(summary, env, net, optimizer):
                 break
 
         # Save episode data
-        summary.save_episode_RL(env, reward_total, info, states, net, optimizer, t)
+        summary.save_episode_RL(env, reward_total, info, states, net, t)
         if algorithm == "Monte-Carlo":
             # Calculate return for all visited states in the episode
             G = 0
             for it in np.arange(t,-1, -1):
                 G = GAMMA * G + rewards[it]
                 memory.push(states[it], actions[it], G, env.agent_number, A_vec[it], B_vec[it])
+                if dublicate_mirror:
+                    mirror_state = states[it].copy()
+                    mirror_state.set_positions(mirror(mirror_state.get_positions(), B_vec[it], n_surf))
+                    mirror_action = mirror_action_space[actions[it]]
+                    memory.push(mirror_state, mirror_action, G, env.agent_number, A_vec[it], B_vec[it])
             # Optimize model (no longer after every episode)
             if (i > 0) and (i % 1 == 0):
                 optimize_model6()
         elif algorithm == "Q-learning":
-            optimize_modelQ()
             # Update the target network, copying all weights and biases in DQN
-            if i % TARGET_UPDATE == 0:
-                target_net.load_state_dict(net.state_dict())
+            if DOUBLE_Q == False:
+                if i % TARGET_UPDATE == 0:
+                    target_net.load_state_dict(net.state_dict())
 
     # Update data and plot
     summary._update_data_RL()
@@ -428,7 +501,7 @@ summary = PerformanceSummary(
     num_episodes_test,
     off_policy=True,
     policy1="Random Agent",
-    policy2="Non greedy RL"
+    policy2="RL Agent"
 )
 
 steps_done = 0
@@ -486,7 +559,7 @@ for i_episode in range(num_episodes):
             # Test trained agent
             if (i_episode > 0) and (i_episode % num_episodes_train == 0):
                 summary._update_data_behavior()
-                test_trained_agent(summary, env, net, optimizer)
+                test_trained_agent(env)
 
             break
     # Update the target network, copying all weights and biases in DQN
