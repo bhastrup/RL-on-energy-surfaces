@@ -10,6 +10,7 @@ from sklearn.utils.extmath import softmax
 
 import math
 import numpy as np
+import pandas as pd
 np.seterr(all='raise')
 import random
 from itertools import count
@@ -26,15 +27,13 @@ from utils.memory_mc import ReplayMemoryMonteCarlo
 #from utils.slab_params import *
 from utils.alloy import *
 from utils.alloymap import AlloyGenerator
-from utils.summary import PerformanceSummary
+from utils.summary_muti import PerformanceSummary
 from utils.mirror import mirror
-#from utils.neb import get_neb_energy
+from utils.neb import get_neb_energy
 
 import schnet_edge_model
 import schnet_edge_model_action
-import schnet_edge_model_action_no_int
 import schnet_edge_model_action_no_cat
-import schnet_edge_model_action_no_int_no_cat
 import data
 
 from datetime import datetime
@@ -76,7 +75,7 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 # Setup logging
 script_dir = os.path.dirname(__file__)
-output_dir = os.path.join(script_dir, 'runs/defense/train_schnet_mirror' + dt_string + '/')
+output_dir = os.path.join(script_dir, 'runs/multi/model_output_' + dt_string + '/')
 # output_dir = "runs/model_output"
 # Setup logging
 os.makedirs(output_dir, exist_ok=True)
@@ -93,7 +92,7 @@ logging.basicConfig(
 
 
 def get_model(args, **kwargs):
-    net = schnet_edge_model_action_no_cat.SchnetModel(
+    net = schnet_edge_model_action.SchnetModel(
         num_interactions=args.num_interactions,
         hidden_state_size=args.node_size,
         cutoff=args.cutoff,
@@ -104,11 +103,11 @@ def get_model(args, **kwargs):
     return net
 
 # Hyper parameters
-random_alloy = False
+random_alloy = True
 algorithm = "Monte-Carlo"
 DOUBLE_Q = False
 boltzmann = True
-dublicate_mirror = True
+dublicate_mirror = False
 mirror_action_space = np.array([0, 1, 3, 2, 4, 5])
 T_BOLTZ = 0.25
 BATCH_SIZE = 64
@@ -119,12 +118,14 @@ EPS_DECAY = 15000
 TARGET_UPDATE = 10
 Q_update = 3
 
-num_episodes = 10000
+E_neb_thres = 1.1
+
+num_episodes = 250000
 num_episodes_train = 10
-num_episodes_test  = 100
+num_episodes_test  = 250
 
 num_interactions = 3
-node_size = 8
+node_size = 64
 cutoff = 4.0 # assert that cutoff>np.cos(np.pi/6)*env.atom_object.get_cell().lengths()[0]
 update_edges = True
 atomwise_normalization = True
@@ -152,7 +153,7 @@ transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 # Initialise model
 if algorithm == "Q-learning":
     from utils.memory import ReplayMemory
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(50000)
     if DOUBLE_Q:
         netA = get_model(args).to(device)
         netA.eval()
@@ -169,7 +170,7 @@ if algorithm == "Q-learning":
         target_net.eval()
 elif algorithm == "Monte-Carlo":
     from utils.memory_mc import ReplayMemoryMonteCarlo
-    memory = ReplayMemoryMonteCarlo(10000)
+    memory = ReplayMemoryMonteCarlo(50000)
     net = get_model(args)
     net = net.to(device)
     net.eval()
@@ -185,68 +186,13 @@ if DOUBLE_Q == False:
 criterion = torch.nn.MSELoss()
 
 
-def select_action(state, greedy=False):
+
+def select_actionQ(state, boltzmann=False):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
         math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
-        with torch.no_grad():
-            # t.max(1) will return largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
-            def perturb_state(state, a):
-                trial_state = state.copy()
-                trial_pos = trial_state.get_positions()
-                trial_pos[agent_atom, :] += env.action_space[a]
-                trial_state.set_positions(trial_pos)
-                return trial_state
-
-            perturbed_states = [perturb_state(state, a) for a in range(n_actions)];
-            graph_states = [transformer(sa, agent_atom, n_surf, env.predict_goal_location()-sa.get_positions()[agent_atom], 
-                            env.predict_start_location()-sa.get_positions()[agent_atom]) for sa in perturbed_states]
-            batch_host = data.collate_atomsdata(graph_states)
-            batch = {
-                k: v.to(device=device, non_blocking=True)
-                for (k, v) in batch_host.items()
-            }
-
-            # return net(batch).max(0)[1].view(1, 1)
-            #probs = F.softmax(net(batch), dim=0).cpu().detach().numpy().squeeze()
-
-            values = net(batch).cpu().detach().numpy()
-
-            if greedy:
-                selected_action = np.argmax(values)
-            else:
-                scaler = StandardScaler()
-                scaled_values = scaler.fit_transform(values).squeeze()
-                probs = softmax([scaled_values]).squeeze()
-                selected_action = np.random.choice(n_actions, p=probs)
-
-            # Make sure agent doesn't wander outside original unit cell
-            new_pos = state.get_positions()[agent_atom]+env.action_space[selected_action]
-            if new_pos[0]<=0:
-                selected_action = 1 # corresponding to +dx
-            elif new_pos[1]<=0:
-                selected_action = 3 # corresponding to +dy
-
-            return selected_action, probs[selected_action]
-    else:
-        return random.randrange(n_actions)
-
-
-
-def select_actionQ(state, greedy=False, boltzmann=False):
-    global steps_done
-    sample = random.random()
-    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
-    steps_done += 1
-    if greedy:
-        eps_threshold = 0
-        boltzmann = False
     if sample > eps_threshold:
         with torch.no_grad():
             # t.max(1) will return largest column value of each row.
@@ -292,26 +238,6 @@ def select_actionQ(state, greedy=False, boltzmann=False):
 
     return selected_action
 
-def optimize_model():
-    if len(memory) > BATCH_SIZE:
-        transitions = memory.sample(BATCH_SIZE)
-        batch = memory.Transition(*zip(*transitions))
-        graph_states = [transformer(sa, agent_atom, n_surf, B, A) for (sa, agent_atom, A, B) in zip(batch.state_action, batch.agent_atom, batch.A, batch.B)]
-        batch_host = data.collate_atomsdata(graph_states)
-        batch_input = {
-            k: v.to(device=device, non_blocking=True)
-            for (k, v) in batch_host.items()
-        }
-        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1).float();
-
-        # Reset gradient
-        optimizer.zero_grad()
-        # Forward, backward and optimize
-        outputs = net(batch_input)
-        loss = criterion(outputs, batch_target);
-        loss.backward()
-        optimizer.step()
-
 def optimize_model6():
     if len(memory) > BATCH_SIZE:
         transitions = memory.sample(BATCH_SIZE)
@@ -334,90 +260,38 @@ def optimize_model6():
         # print("loss.grad = " + str(net.state_dict()["readout_mlp.weight"][0,-2:]))
         optimizer.step()
 
-def optimize_modelQ():
-    if len(memory) < BATCH_SIZE:
-        return
-    transitions = memory.sample(BATCH_SIZE)
-    batch = memory.Transition(*zip(*transitions))
-    reward_batch = torch.cat(batch.reward)
-
-    # Graph state
-    graph_states = [transformer(s, env.agent_number, n_surf, B, A) for (s, A, B) in zip(batch.state, batch.A, batch.B)]
-    batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
-    batch_input = {
-        k: v.to(device=device, non_blocking=True)
-        for (k, v) in batch_host.items()
-    }
-    # Predicted state-action values
-    action_batch = torch.tensor(batch.action, device=device).long().unsqueeze(1)
-    if DOUBLE_Q == True:
-        # Flip coin
-        coin_flip = int(np.random.choice(a=[0,1], size=1))
-        if coin_flip == 0:
-            state_action_values = netA(batch_input).gather(1, action_batch)
-        else:
-            state_action_values = netB(batch_input).gather(1, action_batch)
-    else:
-        state_action_values = net(batch_input).gather(1, action_batch)
-
-    # Graph next_state
-    #A_next, B_next = get_A_and_B(batch.next_state, env)
-    A_next = tuple([env.predict_start_location() - s.get_positions()[env.agent_number] for s in batch.next_state])
-    B_next = tuple([env.predict_goal_location() - s.get_positions()[env.agent_number] for s in batch.next_state])
-    graph_states_next = [transformer(s, env.agent_number, n_surf, B, A) for (s, A, B) in zip(batch.next_state, A_next, B_next)]
-    batch_host_next = data.collate_atomsdata(graph_states_next, pin_memory=pin)
-    batch_input_next = {
-        k: v.to(device=device, non_blocking=True)
-        for (k, v) in batch_host_next.items()
-    }
-    # Evalute next state value (regression target)
-    next_state_values = torch.zeros(BATCH_SIZE, device=device)
-    non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                          batch.next_state)), device=device, dtype=torch.bool)
-    if DOUBLE_Q == True:
-        if coin_flip == 0:
-            a_argmax = netA(batch_input_next).max(1)[1].detach().unsqueeze(1)
-            next_state_values[non_final_mask] = netB(batch_input_next).detach().gather(1, a_argmax).squeeze()
-        else:
-            a_argmax = netB(batch_input_next).max(1)[1].detach().unsqueeze(1)
-            next_state_values[non_final_mask] = netA(batch_input_next).detach().gather(1, a_argmax).squeeze()
-    else:
-        next_state_values[non_final_mask] = target_net(batch_input_next).max(1)[0].detach()
-
-    state_action_values_target = (next_state_values * GAMMA) + reward_batch
-
-    # Compute Huber loss
-    #loss = F.smooth_l1_loss(state_action_values, state_action_values_target.float().unsqueeze(1))
-    loss = criterion(state_action_values, state_action_values_target.float().unsqueeze(1))
-
-    # Optimize the model
-    if DOUBLE_Q == True:
-        if coin_flip == 0:
-            optimizerA.zero_grad
-            loss.backward()
-            for param in netA.parameters():
-                if param.grad is not None:
-                    param.grad.data.clamp_(-1, 1)
-            optimizerA.step()
-        else:
-            optimizerB.zero_grad
-            loss.backward()
-            for param in netB.parameters():
-                if param.grad is not None:
-                    param.grad.data.clamp_(-1, 1)
-            optimizerB.step()
-    else:
-        optimizer.zero_grad()
-        loss.backward()
-        #for param in net.parameters():
-        #    param.grad.data.clamp_(-1, 1)
-        optimizer.step()
 
 def test_trained_agent(env):
     if random_alloy:
         # Sample top two layers
         alloy_atoms = alloy.sample()
         slab, slab_b = alloy.get_relaxed_alloy_map(alloy_atoms=alloy_atoms, map=4)
+        slab_up = alloy.get_relaxed_single(alloy_atoms, 'up')
+        slab_right = alloy.get_relaxed_single(alloy_atoms, 'right')
+
+        # Calculate NEB energy
+        E_up1, _, n_Ag_up1, height_up1  = get_neb_energy(slab, slab_up)
+        E_up2, _, n_Ag_up2, height_up2 = get_neb_energy(slab_up, slab_b)
+        E_right1, _, n_Ag_right1, height_right1 = get_neb_energy(slab, slab_right)
+        E_right2, _, n_Ag_right2, height_right2 = get_neb_energy(slab_right, slab_b)
+
+        E_neb = min(
+            max(E_up1, E_up2),
+            max(E_right1, E_right2)
+        )
+
+        brige_atoms_E = {n_Ag_up1: E_up1,
+                         n_Ag_up2: E_up2,
+                         n_Ag_right1: E_right1,
+                         n_Ag_right2: E_right2}
+
+        data = {'n_Ag': [n_Ag_up1, n_Ag_up2, n_Ag_right1, n_Ag_right2],
+                'E_neb': [E_up1, E_up2, E_right1, E_right2],
+                'height': [height_up1, height_up2, height_right1, height_right2]}
+
+        df = pd.DataFrame(data)
+        summary.save_multi(df)
+        T_neb = num_episodes_test
 
         # Initialize reinforcement learning environment
         env = ASE_RL_Env(
@@ -430,10 +304,6 @@ def test_trained_agent(env):
 
     for i in range(num_episodes_test):
         print("Target episode: " + str(i) + "/" + str(num_episodes_test))
-        if (i > 0) and (i % 5 == 0):
-            greedy = True
-        else:
-            greedy = False
         # Initialize the environment and state
         env.reset()
         state = env.atom_object.copy()
@@ -445,17 +315,14 @@ def test_trained_agent(env):
         A_vec = []
         B_vec = []
         for t in count():
-            #print(np.min(env.pos))
-            #if min(env.pos)<0:
-            #    print("NEGATIVE POSITIONS!")
- 
+
             states.append(state)
             agent_pos = env.pos[env.agent_number]
             A_vec.append(env.predict_start_location() - agent_pos)
             B_vec.append(env.predict_goal_location() - agent_pos)
             
             # Select and perform an action
-            action = select_actionQ(state, greedy = greedy, boltzmann=boltzmann)
+            action = select_actionQ(state, boltzmann=boltzmann)
             state_action, next_state, reward, done, info = env.step(action)
 
             # Update accumulated reward for current episode
@@ -476,8 +343,9 @@ def test_trained_agent(env):
             rewards.append(reward)
 
             if done:
-                
                 break
+
+
 
         # Save episode data
         summary.save_episode_RL(env, reward_total, info, states, net, t)
@@ -488,17 +356,8 @@ def test_trained_agent(env):
                 G = GAMMA * G + rewards[it]
                 memory.push(states[it], actions[it], G, env.agent_number, A_vec[it], B_vec[it])
                 if dublicate_mirror:
-                    #mirror_state = states[it].copy()
-                    #mirror_state.set_positions(mirror(mirror_state.get_positions(), B_vec[it], n_surf))
-                    #mirror_action = mirror_action_space[actions[it]]
-                    #memory.push(mirror_state, mirror_action, G, env.agent_number, A_vec[it], B_vec[it])
-                    # Swap
                     mirror_state = states[it].copy()
-                    mirror_state_pos = mirror_state.get_positions()
-                    mirror_state_pos[:, [1, 0]] = mirror_state_pos[:, [0, 1]]
-                    mirror_state.set_positions(mirror_state_pos)
-                    A_vec[it][[0, 1]] = A_vec[it][[1, 0]]
-                    B_vec[it][[0, 1]] = B_vec[it][[1, 0]]
+                    mirror_state.set_positions(mirror(mirror_state.get_positions(), B_vec[it], n_surf))
                     mirror_action = mirror_action_space[actions[it]]
                     memory.push(mirror_state, mirror_action, G, env.agent_number, A_vec[it], B_vec[it])
             # Optimize model (no longer after every episode)
@@ -510,9 +369,14 @@ def test_trained_agent(env):
                 if i % TARGET_UPDATE == 0:
                     target_net.load_state_dict(net.state_dict())
 
+        if (info=='Goal') and (env.energy_barrier<E_neb_thres*E_neb) and (T_neb==num_episodes_test):
+            T_neb = i
+            break
+
     # Update data and plot
     summary._update_data_RL()
     summary.save_plot()
+    summary.save_map_data(T_neb, num_episodes_test, E_neb_thres)
 
 #####################################################################
 ############################# Main loop #############################
@@ -528,6 +392,7 @@ summary = PerformanceSummary(
     policy1="Random Agent",
     policy2="RL Agent"
 )
+
 
 steps_done = 0
 for i_episode in range(num_episodes):

@@ -32,7 +32,7 @@ class ASE_RL_Env():
         self.max_force = 0.05
         self.max_barrier = 1.0
         self.step_size = 0.15
-        self.active_dist = 4.5
+        self.active_dist = 5.0
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
         self.constant_reward = 0.01 # -0.003
         self.progression_reward = 0.5
@@ -351,7 +351,7 @@ class ASE_RL_Env():
             info = "Wall"
             terminal_reward = -self.max_barrier
         elif self.iter >= self.max_iter:
-            # c) Has max iterations been reached? 
+            # c) Has max iterations been reached?
             done = True
             info = "Max_iter"
             if self.test_goal(3*self.goal_th):

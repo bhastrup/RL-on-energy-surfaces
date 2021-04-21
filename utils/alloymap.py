@@ -148,3 +148,45 @@ class AlloyGenerator(object):
 
         return slab, slab_b
 
+
+    def get_relaxed_single(self, alloy_atoms, hollow_site):
+
+        # alloy_atoms = self.sample(batch_size=1)
+
+        # Build slab and specify atoms
+        slab = fcc100(self.alloy_type, size=self.slab_dim)
+        atomic_numbers = slab.get_atomic_numbers()
+        atomic_numbers[[atom.tag < self.slab_dim[2] for atom in slab]] = alloy_atoms
+        slab.set_atomic_numbers(atomic_numbers)
+
+        # Add adsorbate
+        add_adsorbate(slab, self.adsorbate, 1.7, 'ontop')
+        slab.center(axis=2, vacuum=4.0)
+
+        # Fix bottom layer:
+        mask = [atom.tag > 2 for atom in slab]
+        slab.set_constraint(FixAtoms(mask=mask))
+
+        # Use EMT potential:
+        slab.calc = EMT()
+
+        # Half an interatomic distance is given by dx and dy
+        dx = slab.get_cell()[0, 0] / (2 * self.slab_dim[0])
+        dy = slab.get_cell()[1, 1] / (2 * self.slab_dim[1])
+
+        # Specify initial location of agent atom 
+
+        if hollow_site == 'right':
+            slab[-1].x += 3 * dx
+            slab[-1].y += 1 * dy
+        elif hollow_site == 'up':
+            slab[-1].x += 1 * dx
+            slab[-1].y += 3 * dy
+
+
+        # Initial state:
+        qn = QuasiNewton(slab)
+        qn.run(fmax=self.fmax)
+
+        return slab
+
