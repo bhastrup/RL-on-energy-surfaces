@@ -140,3 +140,5 @@ cython_debug/
 # My own contributions:
 *.traj
 **/__pycache__
+/runs
+*.sh
