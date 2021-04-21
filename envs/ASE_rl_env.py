@@ -25,52 +25,34 @@ from matplotlib import animation
 class ASE_RL_Env():
 
     def __init__(self, initial_state: Atoms, goal_state: Atoms,
-            hollow_neighbors: List, goal_dists: np.ndarray, 
-            goal_dists_periodic: np.ndarray, agent_number: int,
-            view: bool=False, view_force: bool=False):
+        agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.6
         self.max_iter = 100
         self.max_force = 0.05
-        self.max_barrier = 5.0
+        self.max_barrier = 1.0
         self.step_size = 0.15
-        self.active_dist = 4.5
+        self.active_dist = 5.0
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
-        self.constant_reward = 0.2 # -0.003
-        self.progression_reward = 5
-        self.final_barrier_reward = - 20
-        self.goal_reward = abs(2*self.max_barrier*self.final_barrier_reward)
+        self.constant_reward = 0.01 # -0.003
+        self.progression_reward = 0.5
+        self.final_barrier_reward = 10
+        self.goal_reward = abs(1.5*self.max_barrier*self.final_barrier_reward)
+        self.profile_coef = 4
 
         self.view = view
         self.view_force = view_force
-        
         self.initial_state = initial_state
         self.goal_state = goal_state
+        calc = EMT()
+        self.goal_state.set_calculator(calc)
+        self.goal_energy = self.goal_state.get_potential_energy()
         self.num_atoms = len(self.initial_state)
         self.agent_number = agent_number
 
-        self.atom_object = initial_state.copy()
-        calc = EMT()
-        self.atom_object.set_calculator(calc)
-        self.relaxer = BFGS(self.atom_object)
-        self.energy = self.atom_object.get_potential_energy()
-        self.goal_state.set_calculator(calc)
-        self.goal_energy = self.goal_state.get_potential_energy()
-        self.min_energy = self.energy
-        self.energy_profile = [self.energy]
-        self.energy_barrier = 0
-        self.pos = self.atom_object.get_positions()
-        self.start_dist = self.dist_to_start()
-        self.goal_dist = self.dist_to_goal()
+        self.reset()
 
-        self.action_space = self.get_action_space_6()
         self.n_actions = len(self.action_space)
-
-        #self.hollow_neighbors = hollow_neighbors
-        #self.goal_dists = goal_dists
-        #self.goal_dists_periodic=goal_dists_periodic
-
-
         # Distance from goal agent to nearest neighbor atoms
         self.goal_neighbors = (np.linalg.norm(
             goal_state.get_positions()[agent_number] - goal_state.get_positions()[:-1], axis=1)).argsort()[:4]
@@ -94,7 +76,6 @@ class ASE_RL_Env():
         #goal_pos_neighbors = goal_state.get_positions()[hollow_neighbors]
         #self.agent_neigh_disp_goal = goal_pos_agent - goal_pos_neighbors
 
-        self.iter = 0
 
         self.script_dir = os.path.dirname(__file__)
 
@@ -152,6 +133,34 @@ class ASE_RL_Env():
         return action_space
 
 
+    def update_action_space_internal(self) -> np.ndarray:
+        """
+            Creates flattened array of action displacement vectors in 3d
+            Should probably be a list instead
+        """
+
+        B = self.predict_goal_location()-self.pos[self.agent_number, :]
+        n = np.array([0., 0., -1.])
+        nB = np.cross(n, B)
+        BnB = np.cross(B, nB)
+
+        action_space = np.zeros(6, object)
+
+        action_space[0] = B
+        action_space[1] = -B
+        action_space[2] = nB
+        action_space[3] = -nB
+        action_space[4] = BnB
+        action_space[5] = -BnB
+
+        for i in range(len(action_space)):
+                action_space[i] = np.divide(action_space[i], np.linalg.norm(action_space[i])) * self.step_size
+
+        self.action_space = action_space
+
+        return None
+
+
     def initialize_viewer(self) -> None:
         self.fig = plt.figure(figsize=(10,10))
         self.ax = self.fig.add_subplot(111, projection='3d')
@@ -194,13 +203,15 @@ class ASE_RL_Env():
         self.atom_object = self.initial_state.copy()
         calc = EMT()
         self.atom_object.set_calculator(calc)
-        self.goal_dist = self.dist_to_goal()
-        self.start_dist = self.dist_to_start()
+        self.relaxer = BFGS(self.atom_object)
         self.energy = self.atom_object.get_potential_energy()
         self.min_energy = self.energy
         self.energy_profile = [self.energy]
         self.energy_barrier = 0
         self.pos = self.atom_object.get_positions()
+        self.goal_dist = self.dist_to_goal()
+        self.start_dist = self.dist_to_start()
+        self.update_action_space_internal()
 
         if self.view:
             self.initialize_viewer()
@@ -245,9 +256,10 @@ class ASE_RL_Env():
         # print(self.action_space[action])
         self.pos[self.agent_number, :] += self.action_space[action]
         if (self.pos[self.agent_number, 0] < 0) or (self.pos[self.agent_number, 1] < 0):
-            print("Agent moves to neighbor unit cell!!")
+            print("Agent moves to neighbor unit cell!! - new pos=" + str(self.pos[self.agent_number, :]))
 
         self.atom_object.set_positions(self.pos)
+        self.update_action_space_internal()
 
         return self.atom_object.copy()
 
@@ -300,7 +312,7 @@ class ASE_RL_Env():
         self.goal_dist = self.dist_to_goal()
         self.start_dist = self.dist_to_start()
 
-        reward = -(self.energy - old_energy) \
+        reward = -0.25*(self.energy - old_energy) \
             + self.constant_reward \
             + self.progression_reward * (self.start_dist - old_start_dist) \
             - self.progression_reward * (self.goal_dist - old_goal_dist)
@@ -330,20 +342,20 @@ class ASE_RL_Env():
             # a) Has goal site been reached?
             done = True
             info = "Goal"
-            terminal_reward = -self.final_barrier_reward*self.energy_barrier + self.goal_reward + (self.energy - self.goal_energy)
+            terminal_reward = - self.final_barrier_reward*self.energy_barrier + self.goal_reward \
+                              + (self.energy - self.goal_energy) \
+                              - self.profile_coef * np.mean(np.array(self.energy_profile) - self.energy_profile[0])
         elif self.energy_barrier > self.max_barrier:
             # b) Has energy wall been struck?
             done = True
             info = "Wall"
             terminal_reward = -self.max_barrier
         elif self.iter >= self.max_iter:
-            # c) Has max iterations been reached? 
+            # c) Has max iterations been reached?
             done = True
             info = "Max_iter"
             if self.test_goal(3*self.goal_th):
-                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(3*self.goal_th)))
-            else:
-                terminal_reward = -self.max_barrier
+                terminal_reward = -self.energy_barrier*(1+min(1, self.dist_to_goal()/(2*self.goal_th)))
 
         return done, info, terminal_reward
 

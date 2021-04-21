@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from scipy.ndimage.filters import gaussian_filter
 from typing import List, Tuple, Dict
 
@@ -102,7 +103,7 @@ class PerformanceSummary():
 
         # Make criteria switch for new best model
         self.start_goal_dist = np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number])
-        self.best_dist_to_goal = self.start_goal_dist
+        self.best_dist_to_goal = 10*self.start_goal_dist
         self.best_criteria = "distance"
 
         # Heat map
@@ -113,6 +114,7 @@ class PerformanceSummary():
         self.start_pos_top_layer = env.initial_state.get_positions()[[atom.tag < 2 for atom in env.initial_state]]
         self.goal_pos = env.goal_state.get_positions()[env.agent_number]
         self.RL_final_pos = []
+        self.best_path_pos = []
 
     def save_episode_behavior(self, env: ASE_RL_Env, total_reward: float, info: str, states: List[Atoms]) -> None:
 
@@ -134,7 +136,7 @@ class PerformanceSummary():
 
 
     def save_episode_RL(self, env: ASE_RL_Env, total_reward: float, info: str, states: List[Atoms],
-        net: SchnetModel, optimizer: torch.optim.Adam, n_steps: int) -> None:
+        net: SchnetModel, n_steps: int) -> None:
 
         self.RL_episodes_count += 1
         self.RL_step_count += n_steps
@@ -145,7 +147,10 @@ class PerformanceSummary():
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
         self.RL_info.append(info)
 
-        self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
+        if net.state_dict()["readout_mlp.weight"].shape[0] == 6:
+            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"][0].squeeze().tolist())
+        else:
+            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
         #self.RL_readout_mlp_c_half_w.append(net.state_dict()["readout_mlp_c_half.0.weight"].squeeze().tolist())
 
         # Heatmap
@@ -160,7 +165,7 @@ class PerformanceSummary():
                 # We have a new best path
                 new_best = True
                 self.best_dist_to_goal = self.RL_distance_goal[-1]
-                
+
                 # Switch criteria?
                 if self.RL_info.count('Goal') > 0:
                     self.best_criteria = "energy_barrier"
@@ -180,6 +185,7 @@ class PerformanceSummary():
         if new_best:
             # Save states to ASE trajectory file
             self.best_count += 1
+            self.RL_best_path_pos = [s.get_positions()[env.agent_number] for s in states]
             #best_traj = Trajectory(os.path.join(self.output_dir, "best_path_" + str(self.best_count) + ".traj"), 'w')
             #for state in states:
             #    best_traj.write(state)
@@ -189,6 +195,7 @@ class PerformanceSummary():
                 "RL_best_images": self.RL_best_images,
                 "RL_best_barrier": self.RL_best_barrier,
                 "RL_best_profile": self.RL_best_profile,
+                "RL_best_path_pos": self.RL_best_path_pos,
                 "best_count": self.best_count,
                 "RL_episodes_count": self.RL_episodes_count,
                 "RL_total_rewards": self.RL_total_rewards,
@@ -205,7 +212,7 @@ class PerformanceSummary():
             torch.save(
                 {
                     "model": net.state_dict(),
-                    "optimizer": optimizer.state_dict(),
+                    #"optimizer": optimizer.state_dict(),
                     #"step": self.episodes_count * self.num_episodes_train,
                     "steps": self.RL_step_count,
                     "episodes": self.RL_episodes_count,
@@ -515,6 +522,9 @@ class PerformanceSummary():
         ax[2, 1].text(self.start_pos[0]-0.4, self.start_pos[1] + 0.4, 'START', c='white', fontsize=2)
         ax[2, 1].text(self.goal_pos[0]-0.4, self.goal_pos[1] + 0.4, 'GOAL', c='white', fontsize=2)
 
+        path = np.array(self.RL_best_path_pos)
+        ax[2, 1].plot(path[:, 0], path[:, 1], linewidth=0.2, color="red")
+
 
         #################################################################
         ##############   Plot readout_mlp_c_half weights      ###########
@@ -536,7 +546,24 @@ class PerformanceSummary():
         #ax[3, 0].set(ylabel='Avg. readout_mlp_c_half weight')
 
 
+        fig.savefig(os.path.join(self.output_dir, 'PerformanceSummary_A.pdf'))
 
-        fig.savefig(os.path.join(self.output_dir, 'PerformanceSummary.pdf'))
+
+        #################################################################
+        ##############   Plot energy profile and height     #############
+        #################################################################
+
+        fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(fig_width, fig_height), constrained_layout=True)
+
+        ax[0].plot(self.RL_best_profile, linewidth=0.8, color="black")
+        ax[0].set(xlabel='step')
+        ax[0].set(ylabel='Energy [eV]')
+
+        ax[1].plot(path[:, 2]-path[0, 2], linewidth=0.8, color="black")
+        ax[1].set(xlabel='step')
+        ax[1].set(ylabel='Height [Å]')
+        ax[1].set_ylim(-1, 2)
+
+        fig.savefig(os.path.join(self.output_dir, 'PerformanceSummary_B.pdf'))
 
         return None

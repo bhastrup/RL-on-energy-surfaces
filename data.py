@@ -98,7 +98,7 @@ class TransformAtomsObjectToGraph:
     def __init__(self, cutoff=5.0):
         self.cutoff = cutoff
 
-    def __call__(self, atoms, agent_num, A, B):
+    def __call__(self, atoms, agent_num, A, B, A_real):
 
         if np.any(atoms.get_pbc()):
             edges, edges_features, rel_positions = self.get_edges_neighborlist(atoms)
@@ -124,7 +124,8 @@ class TransformAtomsObjectToGraph:
 
         A = torch.tensor(A)
         B = torch.tensor(B)
-        
+        A_real = torch.tensor(A_real)
+
         # Let agent atom be origin of spherical internal coordinate system
         # (this is achived by using the relative positions above)
         
@@ -186,7 +187,7 @@ class TransformAtomsObjectToGraph:
             "node_id_neighbors": node_id_neighbor,
             "internal_coordinates_neighbors": internal_coordinates_neighbors,
             "num_neighbors": torch.tensor(internal_coordinates_neighbors.shape[0]),
-            "A_dist": torch.linalg.norm(A),
+            "A_dist": torch.linalg.norm(A_real),
             "B_dist": torch.linalg.norm(B)
             #"rel_positions": rel_positions
             #"targets": torch.tensor(targets, dtype=default_type),
