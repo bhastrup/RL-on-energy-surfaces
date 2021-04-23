@@ -1,15 +1,6 @@
 
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.utils.extmath import softmax
-
+from datetime import datetime
 import math
-import numpy as np
 np.seterr(all='raise')
 import random
 from itertools import count
@@ -17,12 +8,24 @@ import logging
 import os
 from typing import List, Tuple, Dict
 
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils.extmath import softmax
+import matplotlib
+import matplotlib.pyplot as plt
+is_ipython = 'inline' in matplotlib.get_backend()
+if is_ipython:
+    from IPython import display
+
 # Import surf-rider functionality
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
 from utils.memory import ReplayMemory
 from utils.memory_mc import ReplayMemoryMonteCarlo
-
 #from utils.slab_params import *
 from utils.alloy import *
 from utils.alloymap import AlloyGenerator
@@ -30,24 +33,17 @@ from utils.summary import PerformanceSummary
 from utils.mirror import mirror
 #from utils.neb import get_neb_energy
 
-import schnet_edge_model
-import schnet_edge_model_action
-import schnet_edge_model_action_no_int
-import schnet_edge_model_action_no_cat
-import schnet_edge_model_action_no_int_no_cat
-import data
-
-from datetime import datetime
-now = datetime.now()
-dt_string = now.strftime("%d_%m_%H_%M")
-
-# Set up matplotlib
-import matplotlib
-import matplotlib.pyplot as plt
-
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
+#from models.schnet_edge_model import SchnetModel
+#from models.schnet_edge_model_action import SchnetModel
+#from models.schnet_edge_model_action_no_int import SchnetModel
+#from models.schnet_edge_model_action_no_cat import SchnetModel
+#from models.schnet_edge_model_action_no_int_no_cat import SchnetModel
+#import schnet_edge_model
+from models import schnet_edge_model_action
+#import schnet_edge_model_action_no_int
+#import schnet_edge_model_action_no_cat
+#import schnet_edge_model_action_no_int_no_cat
+from models import data
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,6 +71,8 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 
 # Setup logging
+now = datetime.now()
+dt_string = now.strftime("%d_%m_%H_%M")
 script_dir = os.path.dirname(__file__)
 output_dir = os.path.join(script_dir, 'runs/defense/train_schnet_mirror' + dt_string + '/')
 # output_dir = "runs/model_output"
@@ -93,7 +91,7 @@ logging.basicConfig(
 
 
 def get_model(args, **kwargs):
-    net = schnet_edge_model_action_no_cat.SchnetModel(
+    net = schnet_edge_model_action.SchnetModel(
         num_interactions=args.num_interactions,
         hidden_state_size=args.node_size,
         cutoff=args.cutoff,
@@ -147,7 +145,7 @@ class args_wrapper():
         self.output_dir = output_dir
 
 args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
-transformer = data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
+transformer = models.data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
 
 # Initialise model
 if algorithm == "Q-learning":

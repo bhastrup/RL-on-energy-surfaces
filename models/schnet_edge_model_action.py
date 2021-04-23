@@ -3,8 +3,7 @@ import math
 import torch
 from torch import nn
 
-import layer
-
+from models import layer
 
 class SchnetModel(nn.Module):
     """SchNet model with optional edge updates."""
