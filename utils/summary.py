@@ -11,7 +11,7 @@ from typing import List, Tuple, Dict
 
 from ase import Atoms
 from envs.ASE_rl_env import ASE_RL_Env
-from schnet_edge_model import SchnetModel
+from models.schnet_edge_model import SchnetModel
 from ase.io import Trajectory
 from ase.io import write
 from asap3 import EMT
