@@ -1,7 +1,6 @@
 
 from datetime import datetime
 import math
-np.seterr(all='raise')
 import random
 from itertools import count
 import logging
@@ -9,6 +8,7 @@ import os
 from typing import List, Tuple, Dict
 
 import numpy as np
+np.seterr(all='raise')
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -32,18 +32,10 @@ from utils.alloymap import AlloyGenerator
 from utils.summary import PerformanceSummary
 from utils.mirror import mirror
 #from utils.neb import get_neb_energy
+from utils import voxel_utils
 
-#from models.schnet_edge_model import SchnetModel
-#from models.schnet_edge_model_action import SchnetModel
-#from models.schnet_edge_model_action_no_int import SchnetModel
-#from models.schnet_edge_model_action_no_cat import SchnetModel
-#from models.schnet_edge_model_action_no_int_no_cat import SchnetModel
-#import schnet_edge_model
-from models import schnet_edge_model_action
-#import schnet_edge_model_action_no_int
-#import schnet_edge_model_action_no_cat
-#import schnet_edge_model_action_no_int_no_cat
 from models import data
+from models.DQN_network import DQN
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,7 +66,7 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 now = datetime.now()
 dt_string = now.strftime("%d_%m_%H_%M")
 script_dir = os.path.dirname(__file__)
-output_dir = os.path.join(script_dir, 'runs/defense/train_schnet_mirror' + dt_string + '/')
+output_dir = os.path.join(script_dir, 'runs/defense/test_convolution' + dt_string + '/')
 # output_dir = "runs/model_output"
 # Setup logging
 os.makedirs(output_dir, exist_ok=True)
@@ -90,23 +82,12 @@ logging.basicConfig(
 )
 
 
-def get_model(args, **kwargs):
-    net = schnet_edge_model_action.SchnetModel(
-        num_interactions=args.num_interactions,
-        hidden_state_size=args.node_size,
-        cutoff=args.cutoff,
-        update_edges=args.update_edges,
-        normalize_atomwise=args.atomwise_normalization,
-        **kwargs
-    )
-    return net
-
 # Hyper parameters
 random_alloy = False
 algorithm = "Monte-Carlo"
 DOUBLE_Q = False
 boltzmann = True
-dublicate_mirror = True
+dublicate_mirror = False
 mirror_action_space = np.array([0, 1, 3, 2, 4, 5])
 T_BOLTZ = 0.25
 BATCH_SIZE = 64
@@ -121,31 +102,18 @@ num_episodes = 10000
 num_episodes_train = 10
 num_episodes_test  = 100
 
-num_interactions = 3
-node_size = 8
-cutoff = 4.0 # assert that cutoff>np.cos(np.pi/6)*env.atom_object.get_cell().lengths()[0]
-update_edges = True
-atomwise_normalization = True
 max_steps = 2000
 learning_rate = 0.001
 
 n_surf = - np.array([0.,0.,1.])
 
-class args_wrapper():
-    def __init__(self, num_interactions: int, node_size: int, cutoff: float, update_edges: bool, atomwise_normalization: bool, 
-                 max_steps: int, device: torch.device, learning_rate: float, output_dir: str):
-        self.num_interactions = num_interactions
-        self.node_size = node_size
-        self.cutoff = cutoff
-        self.update_edges = update_edges
-        self.atomwise_normalization = atomwise_normalization
-        self.max_steps = max_steps
-        self.device = device
-        self.learning_rate = learning_rate
-        self.output_dir = output_dir
+# Voxel representation parameters
+cutoff = 4.0
+n_grid = 14
+sigma = 0.6
 
-args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
-transformer = models.data.TransformAtomsObjectToGraph(cutoff=args.cutoff)
+voxel_transformer = voxel_utils.TransformAtomsObjectToVoxelBox(cutoff=cutoff, agent_atom=agent_atom, n_grid=n_grid, sigma=sigma, device=device)
+
 
 # Initialise model
 if algorithm == "Q-learning":
@@ -168,9 +136,9 @@ if algorithm == "Q-learning":
 elif algorithm == "Monte-Carlo":
     from utils.memory_mc import ReplayMemoryMonteCarlo
     memory = ReplayMemoryMonteCarlo(10000)
-    net = get_model(args)
-    net = net.to(device)
+    net = DQN(n_grid, n_grid, n_grid, n_actions).to(device)
     net.eval()
+
 
 if random_alloy:
     alloy = AlloyGenerator()
@@ -181,59 +149,6 @@ if DOUBLE_Q == False:
     optimizer = torch.optim.Adam(net.parameters())
 
 criterion = torch.nn.MSELoss()
-
-
-def select_action(state, greedy=False):
-    global steps_done
-    sample = random.random()
-    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
-    steps_done += 1
-    if sample > eps_threshold:
-        with torch.no_grad():
-            # t.max(1) will return largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
-            def perturb_state(state, a):
-                trial_state = state.copy()
-                trial_pos = trial_state.get_positions()
-                trial_pos[agent_atom, :] += env.action_space[a]
-                trial_state.set_positions(trial_pos)
-                return trial_state
-
-            perturbed_states = [perturb_state(state, a) for a in range(n_actions)];
-            graph_states = [transformer(sa, agent_atom, n_surf, env.predict_goal_location()-sa.get_positions()[agent_atom], 
-                            env.predict_start_location()-sa.get_positions()[agent_atom]) for sa in perturbed_states]
-            batch_host = data.collate_atomsdata(graph_states)
-            batch = {
-                k: v.to(device=device, non_blocking=True)
-                for (k, v) in batch_host.items()
-            }
-
-            # return net(batch).max(0)[1].view(1, 1)
-            #probs = F.softmax(net(batch), dim=0).cpu().detach().numpy().squeeze()
-
-            values = net(batch).cpu().detach().numpy()
-
-            if greedy:
-                selected_action = np.argmax(values)
-            else:
-                scaler = StandardScaler()
-                scaled_values = scaler.fit_transform(values).squeeze()
-                probs = softmax([scaled_values]).squeeze()
-                selected_action = np.random.choice(n_actions, p=probs)
-
-            # Make sure agent doesn't wander outside original unit cell
-            new_pos = state.get_positions()[agent_atom]+env.action_space[selected_action]
-            if new_pos[0]<=0:
-                selected_action = 1 # corresponding to +dx
-            elif new_pos[1]<=0:
-                selected_action = 3 # corresponding to +dy
-
-            return selected_action, probs[selected_action]
-    else:
-        return random.randrange(n_actions)
-
 
 
 def select_actionQ(state, greedy=False, boltzmann=False):
@@ -247,23 +162,14 @@ def select_actionQ(state, greedy=False, boltzmann=False):
         boltzmann = False
     if sample > eps_threshold:
         with torch.no_grad():
-            # t.max(1) will return largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
 
             B = env.predict_goal_location()-state.get_positions()[agent_atom]
-            A = env.predict_start_location()-state.get_positions()[agent_atom]
-            graph_states = [transformer(state, agent_atom, n_surf, B, A)]
-            batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
-            batch = {
-                k: v.to(device=device, non_blocking=True)
-                for (k, v) in batch_host.items()
-            }
+            voxel = voxel_transformer(state, agent_atom, n_surf, B)
 
             if DOUBLE_Q:
                 q_values = 0.5 * (netA(batch) + netB(batch))
             else:
-                q_values = net(batch)
+                q_values = net(voxel.unsqueeze(0))
 
             if boltzmann:
                 scaler = StandardScaler()
@@ -290,37 +196,15 @@ def select_actionQ(state, greedy=False, boltzmann=False):
 
     return selected_action
 
-def optimize_model():
-    if len(memory) > BATCH_SIZE:
-        transitions = memory.sample(BATCH_SIZE)
-        batch = memory.Transition(*zip(*transitions))
-        graph_states = [transformer(sa, agent_atom, n_surf, B, A) for (sa, agent_atom, A, B) in zip(batch.state_action, batch.agent_atom, batch.A, batch.B)]
-        batch_host = data.collate_atomsdata(graph_states)
-        batch_input = {
-            k: v.to(device=device, non_blocking=True)
-            for (k, v) in batch_host.items()
-        }
-        batch_target = torch.unsqueeze(torch.cat(batch.ret), 1).float();
-
-        # Reset gradient
-        optimizer.zero_grad()
-        # Forward, backward and optimize
-        outputs = net(batch_input)
-        loss = criterion(outputs, batch_target);
-        loss.backward()
-        optimizer.step()
 
 def optimize_model6():
     if len(memory) > BATCH_SIZE:
         transitions = memory.sample(BATCH_SIZE)
         batch = memory.Transition(*zip(*transitions))
 
-        graph_states = [transformer(s, agent_atom, n_surf, B, A) for (s, agent_atom, A, B) in zip(batch.state, batch.agent_atom, batch.A, batch.B)]
-        batch_host = data.collate_atomsdata(graph_states, pin_memory=pin)
-        batch_input = {
-            k: v.to(device=device, non_blocking=True)
-            for (k, v) in batch_host.items()
-        }
+        batch_input = [voxel_transformer(s, agent_atom, n_surf, B) for (s, agent_atom, B) in zip(batch.state, batch.agent_atom, batch.B)]
+        batch_input = torch.cat(batch_input).unsqueeze(1)
+
         batch_target = torch.unsqueeze(torch.cat(batch.ret), 1).float().detach()
 
         # Forward, backward and optimize

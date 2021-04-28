@@ -147,10 +147,10 @@ class PerformanceSummary():
         self.RL_distance_goal.append(np.linalg.norm(env.predict_goal_location()-env.pos[env.agent_number]))
         self.RL_info.append(info)
 
-        if net.state_dict()["readout_mlp.weight"].shape[0] == 6:
-            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"][0].squeeze().tolist())
-        else:
-            self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
+        #if net.state_dict()["readout_mlp.weight"].shape[0] == 6:
+        #    self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"][0].squeeze().tolist())
+        #else:
+        #    self.RL_readout_mlp_w.append(net.state_dict()["readout_mlp.weight"].squeeze().tolist())
         #self.RL_readout_mlp_c_half_w.append(net.state_dict()["readout_mlp_c_half.0.weight"].squeeze().tolist())
 
         # Heatmap
@@ -261,7 +261,7 @@ class PerformanceSummary():
         self.RL_distance_goal_avg.append(np.mean(self.RL_distance_goal[-self.num_episodes_test:]))
         self.RL_distance_goal_std.append(np.std(self.RL_distance_goal[-self.num_episodes_test:]))
 
-        self.RL_readout_mlp_w_avg.append(np.mean(self.RL_readout_mlp_w[-self.num_episodes_test:], axis=0))
+        #self.RL_readout_mlp_w_avg.append(np.mean(self.RL_readout_mlp_w[-self.num_episodes_test:], axis=0))
         #self.RL_readout_mlp_c_half_w_avg.append(np.mean(self.RL_readout_mlp_c_half_w[-self.num_episodes_test:], axis=0))
 
         self.RL_best_barrier_vec.append(self.RL_best_barrier)
@@ -475,19 +475,19 @@ class PerformanceSummary():
         ##################   Plot readout_mlp weights      ##############
         #################################################################
 
-        weights = np.array(self.RL_readout_mlp_w_avg)
-        ax[2, 0].plot(
-            step_range,
-            weights[:, :-2],
-            #zorder=2,
-            linewidth=0.4
-        )
+        #weights = np.array(self.RL_readout_mlp_w_avg)
+        #ax[2, 0].plot(
+        #    step_range,
+        #    weights[:, :-2],
+        #    #zorder=2,
+        #    linewidth=0.4
+        #)
 
-        ax[2, 0].plot(step_range, weights[:, -2], linewidth=1.5, color="black", label="$r_A$ weight")
-        ax[2, 0].plot(step_range, weights[:, -1], linewidth=1.5, color="blue", label="$r_B$ weight")
-        ax[2, 0].legend(loc='upper right')
-        ax[2, 0].set(xlabel='Number of training episodes')
-        ax[2, 0].set(ylabel='Avg. readout_mlp weight')
+        #ax[2, 0].plot(step_range, weights[:, -2], linewidth=1.5, color="black", label="$r_A$ weight")
+        #ax[2, 0].plot(step_range, weights[:, -1], linewidth=1.5, color="blue", label="$r_B$ weight")
+        #ax[2, 0].legend(loc='upper right')
+        #ax[2, 0].set(xlabel='Number of training episodes')
+        #ax[2, 0].set(ylabel='Avg. readout_mlp weight')
 
         #################################################################
         ##############   Plot agent position heat map      ##############

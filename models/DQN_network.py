@@ -7,9 +7,9 @@ class DQN(nn.Module):
 
     def __init__(self, h, w, d, outputs):
         super(DQN, self).__init__()
-        self.conv1 = nn.Conv3d(3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm3d(16)
-        self.conv2 = nn.Conv3d(16, 32, kernel_size=5, stride=2)
+        self.conv1 = nn.Conv3d(1, 5, kernel_size=5, stride=1)
+        self.bn1 = nn.BatchNorm3d(5)
+        self.conv2 = nn.Conv3d(5, 8, kernel_size=5, stride=1)
 #        self.bn2 = nn.BatchNorm3d(32)
 #        self.conv3 = nn.Conv3d(32, 32, kernel_size=5, stride=2)
 #        self.bn3 = nn.BatchNorm3d(32)
@@ -18,12 +18,13 @@ class DQN(nn.Module):
 
         # Number of Linear input connections depends on output of conv2d layers
         # and therefore the input image size, so compute it.
-        def conv3d_size_out(size, kernel_size = 5, stride = 2):
+        def conv3d_size_out(size, kernel_size = 5, stride = 1):
             return (size - (kernel_size - 1) - 1) // stride  + 1
+
         convw = conv3d_size_out(conv3d_size_out(w)) // 2 #conv3d_size_out(conv3d_size_out(conv3d_size_out(w)))
         convh = conv3d_size_out(conv3d_size_out(h)) // 2 #conv3d_size_out(conv3d_size_out(conv3d_size_out(h)))
         convd = conv3d_size_out(conv3d_size_out(d)) // 2 #conv3d_size_out(conv3d_size_out(conv3d_size_out(d)))
-        linear_input_size = convw * convh * convd * 32
+        linear_input_size = convw * convh * convd * 8
         self.head = nn.Linear(linear_input_size, outputs)
 
     # Called with either one element to determine next action, or a batch
