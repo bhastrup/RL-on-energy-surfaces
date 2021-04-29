@@ -28,9 +28,9 @@ class ASE_RL_Env():
         agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.6
-        self.max_iter = 100
+        self.max_iter = 10
         self.max_force = 0.05
-        self.max_barrier = 1.0
+        self.max_barrier = 1.5
         self.step_size = 0.15
         self.active_dist = 5.0
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
@@ -49,6 +49,9 @@ class ASE_RL_Env():
         self.goal_energy = self.goal_state.get_potential_energy()
         self.num_atoms = len(self.initial_state)
         self.agent_number = agent_number
+
+
+        self.script_dir = os.path.dirname(__file__)
 
         self.reset()
 
@@ -77,7 +80,6 @@ class ASE_RL_Env():
         #self.agent_neigh_disp_goal = goal_pos_agent - goal_pos_neighbors
 
 
-        self.script_dir = os.path.dirname(__file__)
 
         # Plotting
         # if self.view:
