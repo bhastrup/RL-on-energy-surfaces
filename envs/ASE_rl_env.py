@@ -436,7 +436,7 @@ class ASE_RL_Env():
                     alpha = min(1, max(alpha, 0))
                     self.ax.scatter(
                         pos[i, 0], pos[i,1], pos[i, 2],
-                        zdir='z', s=8000, c=self.atom_colors[i],
+                        zdir='z', s=4000, c=self.atom_colors[i],
                         alpha=alpha,
                         depthshade=False, edgecolors='black'
                     )
@@ -444,7 +444,7 @@ class ASE_RL_Env():
                 for i in range(self.num_atoms):
                     self.ax.scatter(
                         pos[i, 0], pos[i,1], pos[i, 2],
-                        zdir='z', s=8000, c=self.atom_colors[i],
+                        zdir='z', s=4000, c=self.atom_colors[i],
                         depthshade=False, edgecolors='black'
                     )
             self.ax.set_title('Iteration ' + str(self.iter), fontsize=20)
