@@ -3,7 +3,17 @@
 
 from ase.build import fcc100, add_adsorbate
 from ase.constraints import FixAtoms, FixedPlane
-from asap3 import EMT
+import imp
+try:
+    imp.find_module('asap3')
+    found_asap3 = True
+except ImportError:
+    found_asap3 = False
+
+if found_asap3:
+    from asap3 import EMT
+else:
+    from ase.calculators.emt import EMT
 from ase.optimize import QuasiNewton, BFGS
 from ase.visualize import view
 

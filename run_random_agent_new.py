@@ -36,8 +36,8 @@ n_surf = - np.array([0.,0.,1.])
 
 
 # Random agent
-k = 2 #100 # softmax coefficient
-sigma = 0.1 # exploration factor
+k = 8 #100 # softmax coefficient
+sigma = 0.5 # exploration factor
 agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 

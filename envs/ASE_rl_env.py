@@ -39,7 +39,7 @@ class ASE_RL_Env():
         agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.6
-        self.max_iter = 10
+        self.max_iter = 35
         self.max_force = 0.05
         self.max_barrier = 1.5
         self.step_size = 0.15
