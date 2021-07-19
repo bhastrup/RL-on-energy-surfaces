@@ -130,6 +130,19 @@ class AlloyGenerator(object):
         elif map == 5:
             slab[-1].x += 1 * dx
             slab[-1].y += 2 * dy
+        elif map == 6:
+            slab[-1].x += 1 * dx
+            slab[-1].y += 3 * dy
+        elif map == 7:
+            slab[-1].x += 2 * dx
+            slab[-1].y += 3 * dy
+        elif map == 8:
+            slab[-1].x += 2 * dx
+            slab[-1].y += 0 * dy
+        elif map == 9:
+            slab[-1].x += 0 * dx
+            slab[-1].y += 2 * dy
+
 
 
         # NOTE: Do (4,4,3) to have more maps
