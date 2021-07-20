@@ -39,9 +39,9 @@ class ASE_RL_Env():
         agent_number: int, view: bool=False, view_force: bool=False):
 
         self.goal_th = 0.6
-        self.max_iter = 35
+        self.max_iter = 100
         self.max_force = 0.05
-        self.max_barrier = 1.5
+        self.max_barrier = 1.0
         self.step_size = 0.15
         self.active_dist = 5.0
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
