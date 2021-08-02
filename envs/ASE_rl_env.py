@@ -9,7 +9,18 @@ from sklearn.utils.extmath import softmax
 
 from ase import Atoms
 #from ase.calculators.emt import EMT
-from asap3 import EMT
+import imp
+try:
+    imp.find_module('asap3')
+    found_asap3 = True
+except ImportError:
+    found_asap3 = False
+
+if found_asap3:
+    from asap3 import EMT
+else:
+    from ase.calculators.emt import EMT
+
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from .bfgs_max import BFGS as BFGS_MAX
