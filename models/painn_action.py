@@ -218,14 +218,14 @@ class PainnModel(nn.Module):
 
         agent_num = input_dict["agent_num"]
 
-        print("agent_num")
-        print(agent_num)
+        #print("agent_num")
+        #print(agent_num)
 
         agent_index_batch = agent_num + edge_offset.squeeze(-1).squeeze(-1)
 
-        print("agent_index_batch")
-        print(agent_index_batch.shape)
-        print(agent_index_batch)
+        #print("agent_index_batch")
+        #print(agent_index_batch.shape)
+        #print(agent_index_batch)
 
 
         #print("edge_offset")
@@ -255,6 +255,6 @@ class PainnModel(nn.Module):
         # Apply readout function
         Q_value = self.readout_surfrider(agent_nodes_scalar, agent_nodes_vector)
 
-        print(Q_value.shape)
+        # print(Q_value.shape)
 
         return Q_value

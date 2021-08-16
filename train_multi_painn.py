@@ -1,37 +1,51 @@
 
-from datetime import datetime
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils.extmath import softmax
+
 import math
+import numpy as np
+import pandas as pd
+np.seterr(all='raise')
 import random
 from itertools import count
 import logging
 import os
 from typing import List, Tuple, Dict
 
-import numpy as np
-np.seterr(all='raise')
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from sklearn.preprocessing import StandardScaler
-from sklearn.utils.extmath import softmax
-import matplotlib
-#import matplotlib.pyplot as plt
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
 # Import surf-rider functionality
 from envs.ASE_rl_env import ASE_RL_Env
 from models.random_agent import RandomAgent
+from utils.memory import ReplayMemory
 from utils.memory_mc import ReplayMemoryMonteCarlo
+#from utils.slab_params import *
 from utils.alloy import *
-# from utils.alloymap import AlloyGenerator
-from utils.summary_painn import PerformanceSummary
+from utils.alloymap import AlloyGenerator
+from utils.summary_muti import PerformanceSummary
 from utils.mirror import mirror
+from utils.neb import get_neb_energy
+
 
 from models import data_painn
 from models import painn_action
+
+
+from datetime import datetime
+now = datetime.now()
+dt_string = now.strftime("%d_%m_%H_%M")
+
+# Set up matplotlib
+import matplotlib
+import matplotlib.pyplot as plt
+
+is_ipython = 'inline' in matplotlib.get_backend()
+if is_ipython:
+    from IPython import display
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -59,10 +73,8 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 
 # Setup logging
-now = datetime.now()
-dt_string = now.strftime("%d_%m_%H_%M")
 script_dir = os.path.dirname(__file__)
-output_dir = os.path.join(script_dir, 'devs_run/painn_mirror_' + dt_string + '/')
+output_dir = os.path.join(script_dir, 'runs/devs_run/multi/multi_painn_mirror_batch16_NObreak_' + dt_string + '/')
 # output_dir = "runs/model_output"
 # Setup logging
 os.makedirs(output_dir, exist_ok=True)
@@ -77,7 +89,6 @@ logging.basicConfig(
     ],
 )
 
-
 def get_model(args, **kwargs):
     net = painn_action.PainnModel(
         num_interactions=args.num_interactions,
@@ -90,15 +101,17 @@ def get_model(args, **kwargs):
     )
     return net
 
+
 # Hyper parameters
-random_alloy = False
+random_alloy = True
 algorithm = "Monte-Carlo"
 DOUBLE_Q = False
 boltzmann = True
 dublicate_mirror = True
+buffer_size = 50000
 mirror_action_space = np.array([0, 1, 3, 2, 4, 5])
 T_BOLTZ = 0.25
-BATCH_SIZE = 4
+BATCH_SIZE = 16
 GAMMA = 0.999
 EPS_START = 0.1
 EPS_END = 0.05
@@ -106,9 +119,11 @@ EPS_DECAY = 15000
 TARGET_UPDATE = 10
 Q_update = 3
 
-num_episodes = 1000
+E_neb_thres = 1.1
+
+num_episodes = 250000
 num_episodes_train = 10
-num_episodes_test  = 100
+num_episodes_test  = 250
 
 num_interactions = 3
 node_size = 64
@@ -134,13 +149,13 @@ class args_wrapper():
         self.output_dir = output_dir
 
 args=args_wrapper(num_interactions, node_size, cutoff, update_edges, atomwise_normalization, max_steps, device, learning_rate, output_dir)
-
 transformer = data_painn.TransformAtomsObjectsToGraphXyz(cutoff=args.cutoff)
+
 
 # Initialise model
 if algorithm == "Q-learning":
     from utils.memory import ReplayMemory
-    memory = ReplayMemory(10000)
+    memory = ReplayMemory(buffer_size)
     if DOUBLE_Q:
         netA = get_model(args).to(device)
         netA.eval()
@@ -157,7 +172,7 @@ if algorithm == "Q-learning":
         target_net.eval()
 elif algorithm == "Monte-Carlo":
     from utils.memory_mc import ReplayMemoryMonteCarlo
-    memory = ReplayMemoryMonteCarlo(10000)
+    memory = ReplayMemoryMonteCarlo(buffer_size)
     net = get_model(args)
     net = net.to(device)
     net.eval()
@@ -172,9 +187,6 @@ if DOUBLE_Q == False:
 
 criterion = torch.nn.MSELoss()
 
-
-#from utils.painn_utils import GoalAlignmentTransformer
-#copy_and_goal_align = GoalAlignmentTransformer(cutoff=cutoff)
 
 
 def select_actionQ(state, greedy=False, boltzmann=False):
@@ -264,6 +276,32 @@ def test_trained_agent(env):
         # Sample top two layers
         alloy_atoms = alloy.sample()
         slab, slab_b = alloy.get_relaxed_alloy_map(alloy_atoms=alloy_atoms, map=4)
+        slab_up = alloy.get_relaxed_single(alloy_atoms, 'up')
+        slab_right = alloy.get_relaxed_single(alloy_atoms, 'right')
+
+        # Calculate NEB energy
+        E_up1, _, n_Ag_up1, height_up1  = get_neb_energy(slab, slab_up)
+        E_up2, _, n_Ag_up2, height_up2 = get_neb_energy(slab_up, slab_b)
+        E_right1, _, n_Ag_right1, height_right1 = get_neb_energy(slab, slab_right)
+        E_right2, _, n_Ag_right2, height_right2 = get_neb_energy(slab_right, slab_b)
+
+        E_neb = min(
+            max(E_up1, E_up2),
+            max(E_right1, E_right2)
+        )
+
+        brige_atoms_E = {n_Ag_up1: E_up1,
+                         n_Ag_up2: E_up2,
+                         n_Ag_right1: E_right1,
+                         n_Ag_right2: E_right2}
+
+        data = {'n_Ag': [n_Ag_up1, n_Ag_up2, n_Ag_right1, n_Ag_right2],
+                'E_neb': [E_up1, E_up2, E_right1, E_right2],
+                'height': [height_up1, height_up2, height_right1, height_right2]}
+
+        df = pd.DataFrame(data)
+        summary.save_multi(df)
+        T_neb = num_episodes_test
 
         # Initialize reinforcement learning environment
         env = ASE_RL_Env(
@@ -291,10 +329,7 @@ def test_trained_agent(env):
         A_vec = []
         B_vec = []
         for t in count():
-            #print(np.min(env.pos))
-            #if min(env.pos)<0:
-            #    print("NEGATIVE POSITIONS!")
- 
+
             states.append(state)
             agent_pos = env.pos[env.agent_number]
             A_vec.append(env.predict_start_location() - agent_pos)
@@ -322,8 +357,9 @@ def test_trained_agent(env):
             rewards.append(reward)
 
             if done:
-                
                 break
+
+
 
         # Save episode data
         summary.save_episode_RL(env, reward_total, info, states, net, t)
@@ -334,10 +370,6 @@ def test_trained_agent(env):
                 G = GAMMA * G + rewards[it]
                 memory.push(states[it], actions[it], G, env.agent_number, A_vec[it], B_vec[it])
                 if dublicate_mirror:
-                    #mirror_state = states[it].copy()
-                    #mirror_state.set_positions(mirror(mirror_state.get_positions(), B_vec[it], n_surf))
-                    #mirror_action = mirror_action_space[actions[it]]
-                    #memory.push(mirror_state, mirror_action, G, env.agent_number, A_vec[it], B_vec[it])
                     # Swap
                     mirror_state = states[it].copy()
                     mirror_state_pos = mirror_state.get_positions()
@@ -356,9 +388,14 @@ def test_trained_agent(env):
                 if i % TARGET_UPDATE == 0:
                     target_net.load_state_dict(net.state_dict())
 
+        if (info=='Goal') and (env.energy_barrier<E_neb_thres*E_neb) and (T_neb==num_episodes_test):
+            T_neb = i
+            #break
+
     # Update data and plot
     summary._update_data_RL()
     summary.save_plot()
+    summary.save_map_data(T_neb, num_episodes_test, E_neb_thres)
 
 #####################################################################
 ############################# Main loop #############################
@@ -374,57 +411,6 @@ summary = PerformanceSummary(
     policy1="Random Agent",
     policy2="RL Agent"
 )
-
-steps_done = 0
-
-
-
-# i=0
-
-# # Initialize the environment and state
-# env.reset()
-# state = env.atom_object.copy()
-
-# reward_total = 0
-# states = []
-# actions = []
-# rewards = []
-# A_vec = []
-# B_vec = []
-
-# t=0
-
-# states.append(state)
-# agent_pos = env.pos[env.agent_number]
-# A_vec.append(env.predict_start_location() - agent_pos)
-# B_vec.append(env.predict_goal_location() - agent_pos)
-
-
-
-# B = env.predict_goal_location()-state.get_positions()[agent_atom]
-# A = env.predict_start_location()-state.get_positions()[agent_atom]
-
-
-# # # new_state = copy_and_goal_align(state, agent_atom, n_surf, B)
-# graph_states = [transformer(state, agent_atom, B, n_surf)]
-
-# batch_host = data_painn.collate_atomsdata(graph_states, pin_memory=pin)
-# batch = {
-#     k: v.to(device=device, non_blocking=True)
-#     for (k, v) in batch_host.items()
-# }
-
-# if DOUBLE_Q:
-#     q_values = 0.5 * (netA(batch) + netB(batch))
-# else:
-#     q_values = net(batch)
-
-
-
-
-
-
-
 
 steps_done = 0
 for i_episode in range(num_episodes):
@@ -489,4 +475,3 @@ for i_episode in range(num_episodes):
     #    target_net.load_state_dict(policy_net.state_dict())
 
 #summary.save_plot()
-

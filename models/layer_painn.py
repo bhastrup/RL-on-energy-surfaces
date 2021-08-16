@@ -156,9 +156,9 @@ def calc_distance(
     z_coef = (diff_up_dot / up_up_dot).unsqueeze(-1)
 
     dim_0 = x_coef.shape[0] # total number of edges in batch 
-    diff_aligned = x_coef * torch.tensor([[1, 0, 0]]).repeat(dim_0, 1) \
-        + y_coef * torch.tensor([[0, 1, 0]]).repeat(dim_0, 1) \
-        + z_coef * torch.tensor([[0, 0, 1]]).repeat(dim_0, 1)
+    diff_aligned = x_coef * torch.tensor([[1, 0, 0]], device=x_coef.device).repeat(dim_0, 1) \
+        + y_coef * torch.tensor([[0, 1, 0]], device=x_coef.device).repeat(dim_0, 1) \
+        + z_coef * torch.tensor([[0, 0, 1]], device=x_coef.device).repeat(dim_0, 1)
 
     # print("diff")
     # print(diff.shape)
@@ -444,7 +444,7 @@ class PaiNNInteraction(nn.Module):
         scalar_output = scalar_output[edges[:, 0]]  # num_edges, 3*node_size
         filter_output = filter_weight * scalar_output  # num_edges, 3*node_size
 
-        gate_state_vector, gate_edge_vector, gate_node_state = torch.split(
+        gate_state_vector, gate_edge_vector, messages_scalar = torch.split(
             filter_output, node_state_scalar.shape[1], dim=1
         )
 
@@ -456,7 +456,7 @@ class PaiNNInteraction(nn.Module):
         )  # num_edges, 1, node_size
 
         # Only include sender in messages
-        messages_scalar = node_state_scalar[edges[:, 0]] * gate_node_state
+        # messages_scalar = node_state_scalar[edges[:, 0]] * gate_node_state
         messages_state_vector = node_state_vector[
             edges[:, 0]
         ] * gate_state_vector + gate_edge_vector * torch.unsqueeze(
