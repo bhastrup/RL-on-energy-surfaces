@@ -25,3 +25,20 @@ def mirror(pos, B, n_surf):
     return mirror_pos
 
 
+
+def mirror_diagonal(state, B, action, action_reflector):
+
+    # Mirror all positions in atom object
+    mirror_state = state.copy()
+    mirror_state_pos = mirror_state.get_positions()
+    mirror_state_pos[:, [1, 0]] = mirror_state_pos[:, [0, 1]]
+    mirror_state.set_positions(mirror_state_pos)
+
+    # Mirror B
+    B[[0, 1]] = B[[1, 0]]
+
+    # Find mirrored action
+    mirror_action = action_reflector[action]
+
+    return mirror_state, B, mirror_action
+

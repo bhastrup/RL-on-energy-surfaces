@@ -7,7 +7,7 @@ class ReplayMemoryMonteCarlo(object):
         self.capacity = capacity
         self.memory = []
         self.Transition = namedtuple('Transition',
-            ('state', 'action', 'ret', 'agent_atom', 'A', 'B'))
+            ('state', 'action', 'ret', 'agent_atom', 'B', 'n_surf'))
         self.position = 0
 
     def push(self, *args):

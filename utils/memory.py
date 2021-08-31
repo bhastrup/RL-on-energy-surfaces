@@ -8,7 +8,7 @@ class ReplayMemory(object):
         self.capacity = capacity
         self.memory = []
         self.Transition = namedtuple('Transition',
-            ('state', 'action', 'next_state', 'reward', 'A', 'B'))
+            ('state', 'action', 'next_state', 'B_next', 'reward', 'agent_atom', 'B', 'n_surf'))
         self.position = 0
 
     def push(self, *args):
