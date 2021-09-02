@@ -41,15 +41,16 @@ class ASE_RL_Env():
         self.goal_th = 0.6
         self.max_iter = 100
         self.max_force = 0.05
-        self.max_barrier = 1.0
+        self.max_barrier = 0.8
         self.step_size = 0.15
-        self.active_dist = 5.0
+        self.active_dist = 0.1
         self.max_optim_steps = 10 # steps before fmax begins to increase by 10% in BFGS_MAX
-        self.constant_reward = 0.01 # -0.003
+        self.constant_reward = 0.0 # -0.003
         self.progression_reward = 0.5
+        self.E_diff_reward = 0.0
         self.final_barrier_reward = 10
-        self.goal_reward = abs(1.5*self.max_barrier*self.final_barrier_reward)
-        self.profile_coef = 4
+        self.goal_reward = abs(3*self.max_barrier*self.final_barrier_reward)
+        self.profile_coef = 0 # 4
 
         self.view = view
         self.view_force = view_force
@@ -323,7 +324,7 @@ class ASE_RL_Env():
         self.goal_dist = self.dist_to_goal()
         self.start_dist = self.dist_to_start()
 
-        reward = -0.25*(self.energy - old_energy) \
+        reward = -self.E_diff_reward*(self.energy - old_energy) \
             + self.constant_reward \
             + self.progression_reward * (self.start_dist - old_start_dist) \
             - self.progression_reward * (self.goal_dist - old_goal_dist)

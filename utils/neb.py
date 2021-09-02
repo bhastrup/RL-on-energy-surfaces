@@ -25,7 +25,7 @@ if found_asap3:
 else:
     from ase.calculators.emt import EMT
 
-def get_neb_energy(initial_state, goal_state):
+def get_neb_energy(initial_state, goal_state, active_dist = 7):
     """
         Outputs the NEB barrier between two inputtet states
     """
@@ -38,7 +38,6 @@ def get_neb_energy(initial_state, goal_state):
     agent_atom = n_atoms - 1
 
     constrain_bottom = True
-    active_dist = 7
 
     # Number of images
     n_im = 5

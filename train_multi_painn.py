@@ -1,5 +1,4 @@
 
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -27,7 +26,7 @@ from utils.memory_mc import ReplayMemoryMonteCarlo
 from utils.alloy import *
 from utils.alloymap import AlloyGenerator
 from utils.summary_muti import PerformanceSummary
-from utils.mirror import mirror
+from utils.mirror import mirror, mirror_diagonal
 from utils.neb import get_neb_energy
 
 
@@ -74,7 +73,7 @@ agent = RandomAgent(action_space=env.action_space, k=k, sigma=sigma)
 
 # Setup logging
 script_dir = os.path.dirname(__file__)
-output_dir = os.path.join(script_dir, 'runs/devs_run/multi/multi_painn_mirror_batch16_NObreak_' + dt_string + '/')
+output_dir = os.path.join(script_dir, 'runs/devs_run/multi/multi_NObreak_ad0_buf250k' + dt_string + '/')
 # output_dir = "runs/model_output"
 # Setup logging
 os.makedirs(output_dir, exist_ok=True)
@@ -108,10 +107,10 @@ algorithm = "Monte-Carlo"
 DOUBLE_Q = False
 boltzmann = True
 dublicate_mirror = True
-buffer_size = 50000
+buffer_size = 250000
 mirror_action_space = np.array([0, 1, 3, 2, 4, 5])
 T_BOLTZ = 0.25
-BATCH_SIZE = 16
+BATCH_SIZE = 64
 GAMMA = 0.999
 EPS_START = 0.1
 EPS_END = 0.05
@@ -119,7 +118,9 @@ EPS_DECAY = 15000
 TARGET_UPDATE = 10
 Q_update = 3
 
-E_neb_thres = 1.1
+# NEB comparison
+E_neb_thres = 1.1 # NEB threshold
+ad_NEB = 5 # active_dist
 
 num_episodes = 250000
 num_episodes_train = 10
@@ -200,17 +201,8 @@ def select_actionQ(state, greedy=False, boltzmann=False):
         boltzmann = False
     if sample > eps_threshold:
         with torch.no_grad():
-            # t.max(1) will return largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
-
             B = env.predict_goal_location()-state.get_positions()[agent_atom]
-            A = env.predict_start_location()-state.get_positions()[agent_atom]
-
-            # new_state = copy_and_goal_align(state, agent_atom, n_surf, B)
-            # graph_states = [transformer(new_state, agent_atom)]
             graph_states = [transformer(state, agent_atom, B, n_surf)]
-
             batch_host = data_painn.collate_atomsdata(graph_states, pin_memory=pin)
             batch = {
                 k: v.to(device=device, non_blocking=True)
@@ -225,7 +217,6 @@ def select_actionQ(state, greedy=False, boltzmann=False):
             if boltzmann:
                 scaler = StandardScaler()
                 q_values = q_values.view(-1,1).cpu().detach().numpy()
-                #print(q_values)
                 #if sum([(q_i - q_values.mean())**2 for q_i in q_values]) == 0.:
                 #    print("Identical Q-values!! - Can't do Boltzmann")
                 q_values_standard = scaler.fit_transform(q_values)
@@ -280,10 +271,10 @@ def test_trained_agent(env):
         slab_right = alloy.get_relaxed_single(alloy_atoms, 'right')
 
         # Calculate NEB energy
-        E_up1, _, n_Ag_up1, height_up1  = get_neb_energy(slab, slab_up)
-        E_up2, _, n_Ag_up2, height_up2 = get_neb_energy(slab_up, slab_b)
-        E_right1, _, n_Ag_right1, height_right1 = get_neb_energy(slab, slab_right)
-        E_right2, _, n_Ag_right2, height_right2 = get_neb_energy(slab_right, slab_b)
+        E_up1, _, n_Ag_up1, height_up1  = get_neb_energy(slab, slab_up, active_dist=ad_NEB)
+        E_up2, _, n_Ag_up2, height_up2 = get_neb_energy(slab_up, slab_b, active_dist=ad_NEB)
+        E_right1, _, n_Ag_right1, height_right1 = get_neb_energy(slab, slab_right, active_dist=ad_NEB)
+        E_right2, _, n_Ag_right2, height_right2 = get_neb_energy(slab_right, slab_b, active_dist=ad_NEB)
 
         E_neb = min(
             max(E_up1, E_up2),
@@ -321,7 +312,6 @@ def test_trained_agent(env):
         # Initialize the environment and state
         env.reset()
         state = env.atom_object.copy()
-
         reward_total = 0
         states = []
         actions = []
@@ -345,7 +335,21 @@ def test_trained_agent(env):
 
             if algorithm == "Q-learning":
                 # Store the transition in memory
-                memory.push(state, action, next_state, reward, A_vec[-1], B_vec[-1])
+                B_next = goal_prediction - next_state.get_positions()[env.agent_number]
+                memory.push(state, action, next_state, B_next, reward, env.agent_number, B_vec[-1], n_surf)
+                if info == "Goal":
+                    for _ in np.arange(0,20):
+                        memory.push(state, action, next_state, B_next, reward, env.agent_number, B_vec[-1], n_surf)
+
+                if dublicate_mirror:
+                    mirror_state, B_mirror, mirror_action = mirror_diagonal(
+                        state=state, B=B_vec[-1], action=action, action_reflector=mirror_action_space
+                    )
+                    mirror_next_state, mirror_B_next, _ = mirror_diagonal(
+                        state=next_state, B=B_next, action=action, action_reflector=mirror_action_space
+                    )
+                    # Store the mirrored transition in memory
+                    memory.push(mirror_state, mirror_action, mirror_next_state, mirror_B_next, reward, env.agent_number, B_mirror, n_surf)
                 if t % Q_update == 0:
                     optimize_modelQ()
 
@@ -368,17 +372,15 @@ def test_trained_agent(env):
             G = 0
             for it in np.arange(t,-1, -1):
                 G = GAMMA * G + rewards[it]
-                memory.push(states[it], actions[it], G, env.agent_number, A_vec[it], B_vec[it])
+                memory.push(states[it], actions[it], G, env.agent_number, B_vec[it], n_surf)
                 if dublicate_mirror:
-                    # Swap
-                    mirror_state = states[it].copy()
-                    mirror_state_pos = mirror_state.get_positions()
-                    mirror_state_pos[:, [1, 0]] = mirror_state_pos[:, [0, 1]]
-                    mirror_state.set_positions(mirror_state_pos)
-                    A_vec[it][[0, 1]] = A_vec[it][[1, 0]]
-                    B_vec[it][[0, 1]] = B_vec[it][[1, 0]]
-                    mirror_action = mirror_action_space[actions[it]]
-                    memory.push(mirror_state, mirror_action, G, env.agent_number, A_vec[it], B_vec[it])
+                    mirror_state, B_mirror, mirror_action = mirror_diagonal(
+                        state=states[it],
+                        B=B_vec[it],
+                        action=actions[it],
+                        action_reflector=mirror_action_space
+                    )
+                    memory.push(mirror_state, mirror_action, G, env.agent_number, B_mirror, n_surf)
             # Optimize model (no longer after every episode)
             if (i > 0) and (i % 1 == 0):
                 optimize_model6()
