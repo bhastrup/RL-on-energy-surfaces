@@ -120,7 +120,7 @@ Q_update = 3
 
 # NEB comparison
 E_neb_thres = 1.1 # NEB threshold
-ad_NEB = 5 # active_dist
+ad_NEB = 0.1 # active_dist
 
 num_episodes = 250000
 num_episodes_train = 10
